@@ -624,7 +624,14 @@ GAME.city = (function () {
     '}'].join('\n');
   function lamBlock(t) {
     var cells = new THREE.Vector2(t.cells[0], t.cells[1]);
-    var m = new THREE.MeshLambertMaterial({ map: t.map, emissive: 0xbbbbcc, emissiveMap: t.glow, vertexColors: true });
+    // a standard surface now (gfx.js): the city's walls pick up the sky off
+    // their envmap and their windows sit in a PBR frame — and the winLight
+    // hook below survives the move, its chunks all still where they were.
+    // (software GL keeps the walls as Lambert — gfx.surface decides)
+    var m = GAME.gfx.surface({
+      map: t.map, emissive: 0xbbbbcc, emissiveMap: t.glow, vertexColors: true,
+      roughness: 0.86, metalness: 0.06, envInt: 0.4
+    });
     // The source text is the same for every block material, so three.js
     // compiles this program once and shares it; the uniforms stay per material.
     m.onBeforeCompile = function (sh) {
@@ -856,7 +863,10 @@ GAME.city = (function () {
     var blkHarbor = windowTexture('#828079', ['#ffd890'], 6, 3, BL.harbor.lit, 'rgba(78,80,88,0.5)', PALE);
 
     function lam(t) {
-      return new THREE.MeshLambertMaterial({ map: t.map, emissive: 0xbbbbcc, emissiveMap: t.glow, vertexColors: true });
+      return GAME.gfx.surface({
+        map: t.map, emissive: 0xbbbbcc, emissiveMap: t.glow, vertexColors: true,
+        roughness: 0.88, metalness: 0.05, envInt: 0.35
+      });
     }
     // the second landmass draws its own meshes but shares the city's window
     // textures and sign atlas, so the two read as one world
@@ -870,7 +880,18 @@ GAME.city = (function () {
       return m;
     }
     addMesh(batches.ground, sharedVertexLambert());
-    addMesh(asphalt, new THREE.MeshPhongMaterial({ vertexColors: true, shininess: 70, specular: 0x232e42 }));
+    // asphalt, physically based: a grain of roughness out of the shared noise
+    // tile (gfx.js), and rain takes the roughness down until the street
+    // carries the neon — the wet look, without a single extra light.
+    // (software GL keeps the road exactly as it was — Phong, vertex colours)
+    var roadMat = GAME.gfx.flatTier()
+      ? new THREE.MeshPhongMaterial({ vertexColors: true, shininess: 70, specular: 0x232e42 })
+      : GAME.gfx.surface({
+          vertexColors: true, roughness: 0.93, metalness: 0.04,
+          roughnessMap: GAME.gfx.asphaltRoughnessMap(), envInt: 0.3
+        });
+    if (GAME.gfx) GAME.gfx.registerWet(roadMat);
+    addMesh(asphalt, roadMat);
     // road paint always wins its tie against the asphalt beneath it — a
     // depth-only nudge toward the camera, so no altitude can blur the two
     addMesh(batches.marks, new THREE.MeshBasicMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 }));
@@ -1846,26 +1867,23 @@ GAME.city = (function () {
       var gi = Math.round((op[vi] - OCEAN_X0) / OCEAN_CELL), gj = Math.round((op[vi + 2] - OCEAN_Z0) / OCEAN_CELL);
       op[vi + 1] = base[gj * OX + gi];
     }
-    var om = new THREE.MeshPhongMaterial({ color: 0x0d2242, shininess: 120, specular: 0x8899cc, transparent: true, opacity: 0.93 });
-    // The swell is worked out on the GPU. It used to be a loop over all 4,453
-    // vertices on every frame, and the whole position buffer sent up again
-    // after it, which also meant keeping a second copy of the plane to work
-    // from. The sea's own vertices lie at -0.35 and the sunk ones at -4, so
-    // the shader tells them apart by height and needs no mask. The two phases
-    // are wrapped here, in double precision, so a long session never runs
+    // The sea, on gfx.js's water shader now: the SAME swell the physics has
+    // always run — city.seaY and the boats' buoyancy still integrate those
+    // two sines, sine for sine — with animated normals, Schlick fresnel, a
+    // planar reflection of the sky and the skyline rendered from a mirrored
+    // camera, moon glitter and foam where the sea meets the sand.
+    // The swell is worked out on the GPU (it always was): the sea's own
+    // vertices lie at -0.35 and the sunk ones at -4, so the shader tells
+    // them apart by height and needs no mask. The two phases are wrapped by
+    // the scenery clock, in double precision, so a long session never runs
     // the GPU's single-precision sine out of digits.
     var wave = { value: new THREE.Vector2() };
-    om.onBeforeCompile = function (sh) {
-      sh.uniforms.uWave = wave;
-      if (sh.vertexShader.indexOf('#include <begin_vertex>') < 0) console.error('ocean: the shader chunk it hooks is missing');
-      sh.vertexShader = sh.vertexShader
-        .replace('#include <common>', '#include <common>\nuniform vec2 uWave;')
-        .replace('#include <begin_vertex>', '#include <begin_vertex>\n' +
-          'if (position.y > -0.5) transformed.y += sin(position.x * 0.045 + uWave.x) * 0.28 + sin(position.z * 0.06 + uWave.y) * 0.22;');
-    };
+    var om = GAME.gfx ? GAME.gfx.waterMaterial(wave.value) :
+      new THREE.MeshPhongMaterial({ color: 0x0d2242, shininess: 120, specular: 0x8899cc, transparent: true, opacity: 0.93 });
     city.oceanWave = wave.value;
     var ocean = new THREE.Mesh(og, om);
     scene.add(ocean);
+    if (GAME.gfx) GAME.gfx.upgradeWater(ocean);
 
     // moon glitter streak
     var streakTex = radialGlowTexture('rgba(200,220,255,0.8)');
@@ -2023,7 +2041,7 @@ GAME.city = (function () {
     // shared workhorse the static meshes wear: r128 keeps one program per
     // material, and a material worn by instanced and plain meshes alike
     // swaps its program every time the draw order alternates between them.
-    var instLam = new THREE.MeshLambertMaterial({ vertexColors: true });
+    var instLam = GAME.gfx.surface({ vertexColors: true, roughness: 0.85, metalness: 0.03, envInt: 0.3 });
 
     // palms
     // extra palms scattered on boulevard sidewalks
@@ -2041,7 +2059,7 @@ GAME.city = (function () {
     });
     var trunkGeo = new THREE.CylinderGeometry(0.16, 0.3, 6.4, 5);
     trunkGeo.translate(0, 3.2, 0);
-    var trunkMesh = new THREE.InstancedMesh(trunkGeo, new THREE.MeshLambertMaterial({ color: 0x6a4c34 }), palms.length);
+    var trunkMesh = new THREE.InstancedMesh(trunkGeo, GAME.gfx.surface({ color: 0x6a4c34, roughness: 0.9, metalness: 0, envInt: 0.2 }), palms.length);
     var frondB = new GeoBatch();
     for (var f = 0; f < 7; f++) {
       var a = f / 7 * Math.PI * 2;
@@ -2126,7 +2144,7 @@ GAME.city = (function () {
     }
     var hydGeo = new THREE.CylinderGeometry(0.24, 0.3, 0.8, 6);
     hydGeo.translate(0, 0.55, 0);
-    var hydMesh = new THREE.InstancedMesh(hydGeo, new THREE.MeshLambertMaterial({ color: 0xc84848 }), hyd.length);
+    var hydMesh = new THREE.InstancedMesh(hydGeo, GAME.gfx.surface({ color: 0xc84848, roughness: 0.6, metalness: 0.5, envInt: 0.5 }), hyd.length);
     for (var hh = 0; hh < hyd.length; hh++) {
       dummy.position.set(hyd[hh].x, 0, hyd[hh].z);
       dummy.rotation.set(0, 0, 0); dummy.scale.setScalar(1);
@@ -2162,7 +2180,7 @@ GAME.city = (function () {
     // shipping containers
     if (containerData.length) {
       var contGeo = new THREE.BoxGeometry(12, 2.6, 2.6);
-      var contMesh = new THREE.InstancedMesh(contGeo, new THREE.MeshLambertMaterial(), containerData.length);
+      var contMesh = new THREE.InstancedMesh(contGeo, GAME.gfx.surface({ roughness: 0.55, metalness: 0.65, envInt: 0.55 }), containerData.length);
       var col = new THREE.Color();
       for (var ci = 0; ci < containerData.length; ci++) {
         var cd = containerData[ci];
@@ -2186,7 +2204,7 @@ GAME.city = (function () {
     addSolid(-100, -100, 37, 37, 110);
     addSolid(-100, -100, 15, 15, 111.2);
     var twrTex = windowTexture('#0e1226', ['#a8e8ff', '#ffd0e8', '#ffe9a8'], 10, 9, 0.6);
-    var twrMesh = new THREE.Mesh(twr.build(), new THREE.MeshLambertMaterial({ map: twrTex.map, emissive: 0xccccdd, emissiveMap: twrTex.glow, vertexColors: true }));
+    var twrMesh = new THREE.Mesh(twr.build(), GAME.gfx.surface({ map: twrTex.map, emissive: 0xccccdd, emissiveMap: twrTex.glow, vertexColors: true, roughness: 0.7, metalness: 0.45, envInt: 0.6 }));
     twrMesh.matrixAutoUpdate = false;
     scene.add(twrMesh);
     var crown = new THREE.Mesh(new THREE.BoxGeometry(15, 1.6, 15), new THREE.MeshBasicMaterial({ color: 0xff4fa3 }));
@@ -2977,7 +2995,7 @@ GAME.city = (function () {
     g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
     g.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(nrm), 3));
     g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(col), 3));
-    var mesh = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+    var mesh = new THREE.Mesh(g, GAME.gfx.surface({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.85, metalness: 0.03, envInt: 0.3 }));
     mesh.matrixAutoUpdate = false;
     scene.add(mesh);
   }

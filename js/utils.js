@@ -117,6 +117,13 @@ function GeoBatch() {
   // Window light, per building (see addBox). Only a batch given a `light`
   // setting carries it, so every other mesh in the game is exactly as it was.
   this.light = null; this.lgt = NO_FLOATS; this.nl = 0;
+  // Per-vertex surface feel, for the PBR bodies (gfx.js): roughness and
+  // metalness, one pair per vertex, written by addBox's `rm` argument. A
+  // batch nobody passes an rm to carries none and never pays for it.
+  this.rma = NO_FLOATS; this.nrm2 = 0;
+  // No texture will ever be read from this batch (the vehicle bodies): the
+  // uv never exists and the colour packs down to bytes (see build)
+  this.noUV = false;
 }
 function growFloats(a, len) { var b = new Float32Array(len); b.set(a); return b; }
 // make room for k more vertices
@@ -126,6 +133,13 @@ GeoBatch.prototype.room = function (k) {
   this.pos = growFloats(this.pos, cap * 3); this.nrm = growFloats(this.nrm, cap * 3);
   this.col = growFloats(this.col, cap * 3); this.uv = growFloats(this.uv, cap * 2);
   this.cap = cap;
+};
+// surface feel for the vertex just written (gfx.js reads it as aRM)
+GeoBatch.prototype.rmVert = function (rough, metal) {
+  var j = this.nrm2 * 2;
+  if (j + 2 > this.rma.length) this.rma = growFloats(this.rma, Math.max(512, this.rma.length * 2));
+  this.rma[j] = rough; this.rma[j + 1] = metal;
+  this.nrm2++;
 };
 GeoBatch.prototype.vert = function (x, y, z, nx, ny, nz, r, g, b, u, v) {
   var i = this.n++, i3 = i * 3, i2 = i * 2;
@@ -187,11 +201,16 @@ var WINDOW_DECK = [3, 1, 0, 1, 2, 1, 1, 3, 0, 1, 2, 1, 0, 1, 3, 2, 1, 0, 2, 1];
 // `shift`: slide this box's window pattern along by an amount of its own (see
 // below). Opt-in, so the buildings that were designed keep the windows they
 // were designed with.
-GeoBatch.prototype.addBox = function (cx, cy, cz, sx, sy, sz, rotY, color, uvScale, shift) {
+GeoBatch.prototype.addBox = function (cx, cy, cz, sx, sy, sz, rotY, color, uvScale, shift, rm) {
   var hx = sx / 2, hy = sy / 2, hz = sz / 2;
   var c = Math.cos(rotY || 0), s = Math.sin(rotY || 0);
   var r = (color >> 16 & 255) / 255, g = (color >> 8 & 255) / 255, b = (color & 255) / 255;
   var us = uvScale || 0;
+  // surface feel: a box told nothing takes the batch's rmDefault (set by the
+  // vehicle builders — one feel for a whole body), a box told otherwise its
+  // own, and a batch with neither carries none and never pays for it
+  var rmDef = this.rmDefault || null;
+  var rmR = rm ? rm[0] : rmDef ? rmDef[0] : 0.85, rmM = rm ? rm[1] : rmDef ? rmDef[1] : 0.05;
   // Where along its texture a wall starts. This used to be a per-position
   // offset of floor(x * 8) — a whole number, on a texture that REPEATS, and a
   // repeating texture samples u and u + 1 identically. So it did nothing: 249
@@ -246,6 +265,7 @@ GeoBatch.prototype.addBox = function (cx, cy, cz, sx, sy, sz, rotY, color, uvSca
       this.vert(cx + (v0 * c + v2 * s), cy + v1, cz + (-v0 * s + v2 * c), nx, n1, nz, r, g, b,
         QUAD_U[k] ? u0 + uw : u0, QUAD_V[k] ? vh : 0);
       if (lit) this.winLight(lv0, lv1, lv2);
+      if (rm || rmDef) this.rmVert(rmR, rmM);
     }
   }
 };
@@ -299,18 +319,36 @@ GeoBatch.prototype.build = function () {
   var n = this.n, g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(this.pos.slice(0, n * 3), 3));
   g.setAttribute('normal', new THREE.BufferAttribute(this.nrm.slice(0, n * 3), 3));
-  g.setAttribute('color', new THREE.BufferAttribute(this.col.slice(0, n * 3), 3));
-  g.setAttribute('uv', new THREE.BufferAttribute(this.uv.slice(0, n * 2), 2));
+  if (this.noUV) {
+    // a vehicle body (or any batch that raises the flag): no texture will
+    // ever read a uv off it, and its colours are exact 255ths — so the uv
+    // never exists and the colour goes up as bytes. A car body that held
+    // 44 bytes a vertex holds 27.
+    var cb = new Uint8Array(n * 3);
+    for (var c = 0; c < cb.length; c++) cb[c] = Math.round(Math.min(1, Math.max(0, this.col[c])) * 255);
+    g.setAttribute('color', new THREE.BufferAttribute(cb, 3, true));
+  } else {
+    g.setAttribute('color', new THREE.BufferAttribute(this.col.slice(0, n * 3), 3));
+    g.setAttribute('uv', new THREE.BufferAttribute(this.uv.slice(0, n * 2), 2));
+  }
   if (this.nl) {
     // every vertex or none: a light batch given a quad by some other route
     // would feed the shader garbage, so say so loudly instead
     if (this.nl !== n) console.error('GeoBatch: window light missing on some vertices');
     g.setAttribute('winLight', new THREE.BufferAttribute(this.lgt.slice(0, this.nl * 3), 3));
   }
+  if (this.nrm2) {
+    if (this.nrm2 !== n) console.error('GeoBatch: surface feel missing on some vertices');
+    // bytes, normalized: roughness and metalness never needed finer than
+    // 255ths, and a merged body carries thousands of the pair
+    var rb = new Uint8Array(this.nrm2 * 2);
+    for (var q = 0; q < rb.length; q++) rb[q] = Math.round(Math.min(1, Math.max(0, this.rma[q])) * 255);
+    g.setAttribute('aRM', new THREE.BufferAttribute(rb, 2, true));
+  }
   // A batch is built once. What it held is the geometry's now; keeping the
   // working arrays as well would hold the world twice over.
-  this.pos = this.nrm = this.col = this.uv = this.lgt = NO_FLOATS;
-  this.n = this.cap = this.nl = 0;
+  this.pos = this.nrm = this.col = this.uv = this.lgt = this.rma = NO_FLOATS;
+  this.n = this.cap = this.nl = this.nrm2 = 0;
   return g;
 };
 
@@ -332,7 +370,7 @@ function packStatic(root, keep) {
     (Array.isArray(o.material) ? o.material : [o.material]).forEach(function (m) {
       if (!m) return;
       if (m.map || m.emissiveMap || m.alphaMap || m.bumpMap || m.normalMap || m.specularMap ||
-          m.lightMap || m.aoMap || m.displacementMap) n.uv = true;
+          m.roughnessMap || m.metalnessMap || m.lightMap || m.aoMap || m.displacementMap) n.uv = true;
       if (!m.isMeshBasicMaterial) n.normal = true;
       if (m.vertexColors) n.color = true;
     });

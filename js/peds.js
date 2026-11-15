@@ -92,6 +92,47 @@ var PED_SKINS = [0xeac8a8, 0xc89878, 0x8a6848, 0x6a4c34, 0xf0d8c0];
 var PED_HAIR_COLORS = [0x1c1a18, 0x5a3c22, 0x2e2018, 0xd8b86a, 0xa8482a, 0x8a8a90];
 var PED_HAIR_STYLES = ['crew', 'crew', 'crew', 'flattop', 'flattop', 'pompadour', 'mullet', 'afro', 'ponytail', 'mohawk'];
 
+// ---------- the town's own bodies (gfx.js era) ----------
+// Every figure in Costa Rosa shares one head and one torso: a skull with its
+// nose, jaw, brow and ears, a chest with shoulders and a collar — merged
+// from plain boxes into one geometry, painted white so whatever material
+// wears it tints every part at once (the wardrobe swaps the skin, and the
+// nose follows it — that was the whole trick). The plain boxes stay for the
+// low tier, and every joint keeps its place, so the walk cycle needs to
+// know nothing about any of this.
+var HUMAN_GEO = null;
+function humanGeo() {
+  if (HUMAN_GEO) return HUMAN_GEO;
+  function build(fill) {
+    var b = new GeoBatch();
+    fill(b);
+    b.noUV = true;   // no texture on a face: colour packs to bytes
+    var g = b.build();
+    g.userData.shared = true;
+    return g;
+  }
+  HUMAN_GEO = {
+    head: build(function (b) {
+      b.addBox(0, 0, 0, 0.26, 0.28, 0.26, 0, 0xffffff, 0);           // the skull
+      b.addBox(0, -0.015, 0.145, 0.055, 0.09, 0.05, 0, 0xffffff, 0);  // the nose
+      b.addBox(0, -0.1, 0.115, 0.155, 0.05, 0.06, 0, 0xffffff, 0);    // the jaw
+      b.addBox(0, 0.062, 0.135, 0.2, 0.038, 0.03, 0, 0xffffff, 0);    // the brow ridge
+      b.addBox(0.145, -0.01, 0, 0.035, 0.085, 0.09, 0, 0xffffff, 0);  // the ears
+      b.addBox(-0.145, -0.01, 0, 0.035, 0.085, 0.09, 0, 0xffffff, 0);
+    }),
+    torso: build(function (b) {
+      b.addBox(0, 0, 0, 0.46, 0.62, 0.26, 0, 0xffffff, 0);            // the chest
+      b.addBox(0.2, 0.25, 0, 0.17, 0.16, 0.25, 0, 0xffffff, 0);       // the shoulders
+      b.addBox(-0.2, 0.25, 0, 0.17, 0.16, 0.25, 0, 0xffffff, 0);
+      b.addBox(0, 0.27, 0.1, 0.23, 0.06, 0.09, 0, 0xffffff, 0);       // the collar
+    })
+  };
+  return HUMAN_GEO;
+}
+function detailPeds() {
+  return !!(GAME.gfx && GAME.gfx.cfg && GAME.gfx.cfg.detailPeds);
+}
+
 function buildPedMesh(opts) {
   opts = opts || {};
   var g = new THREE.Group();
@@ -117,12 +158,30 @@ function buildPedMesh(opts) {
     pants: sharedLambert(pants),
     skin: sharedLambert(skin)
   };
-  var torso = new THREE.Mesh(sharedBoxGeo(0.46, 0.62, 0.26), mats.shirt);
+  var torso = new THREE.Mesh(detailPeds() ? humanGeo().torso : sharedBoxGeo(0.46, 0.62, 0.26), mats.shirt);
   torso.position.y = 1.12;
   g.add(torso);
-  var head = new THREE.Mesh(sharedBoxGeo(0.26, 0.28, 0.26), mats.skin);
+  if (detailPeds()) {
+    // the belt stays dark whoever wears the chest: a child of the torso, so
+    // it turns with the shirt it sits over and never meets the wardrobe
+    var belt = new THREE.Mesh(sharedBoxGeo(0.47, 0.07, 0.27), sharedLambert(0x191922));
+    belt.position.set(0, -0.18, 0);
+    torso.add(belt);
+  }
+  var head = new THREE.Mesh(detailPeds() ? humanGeo().head : sharedBoxGeo(0.26, 0.28, 0.26), mats.skin);
   head.position.y = 1.6;
   g.add(head);
+  if (detailPeds()) {
+    // the eyes: dark, set proud of the face, far enough apart to read as a
+    // face from across the street. Marked skinPart so a skin swap takes
+    // them too if ever wanted; they stay their own dark selves.
+    var eyeMat = sharedLambert(0x11141c);
+    [0.062, -0.062].forEach(function (ex) {
+      var eye = new THREE.Mesh(sharedBoxGeo(0.055, 0.03, 0.02), eyeMat);
+      eye.position.set(ex, 0.012, 0.132);
+      head.add(eye);
+    });
+  }
   if (opts.army) {
     // a soldier's helmet, not a patrolman's cap: domed, and down over the ears
     var helm = new THREE.Mesh(sharedBoxGeo(0.34, 0.15, 0.34), mats.pants);
@@ -158,6 +217,23 @@ function buildPedMesh(opts) {
   var armR = limb(0.13, 0.58, mats.shirt, 0.3, 1.38);
   var legL = limb(0.16, 0.8, mats.pants, -0.13, 0.82);
   var legR = limb(0.16, 0.8, mats.pants, 0.13, 0.82);
+  if (detailPeds()) {
+    // hands on the arms (skin, so they follow the body that owns them) and
+    // shoes on the legs (dark leather, town issue). children[0] stays the
+    // limb mesh the wardrobe re-tints; these ride behind it.
+    [armL, armR].forEach(function (arm) {
+      var hand = new THREE.Mesh(sharedBoxGeo(0.09, 0.1, 0.09), mats.skin);
+      hand.userData.skinPart = true;
+      hand.position.set(0, -0.585, 0.01);
+      arm.add(hand);
+    });
+    var shoeMat = sharedLambert(0x17171f);
+    [legL, legR].forEach(function (leg) {
+      var shoe = new THREE.Mesh(sharedBoxGeo(0.17, 0.09, 0.25), shoeMat);
+      shoe.position.set(0, -0.785, 0.035);
+      leg.add(shoe);
+    });
+  }
   g.userData.joints = { armL: armL, armR: armR, legL: legL, legR: legR, head: head, torso: torso };
   if (opts.cop && !opts.army) {
     // an officer's service pistol: in the holster on his hip on the beat,
@@ -188,6 +264,7 @@ function buildPedMesh(opts) {
     armR.add(rifle);
     g.userData.rifle = rifle;
   }
+  vehicleShadows(g);
   return g;
 }
 

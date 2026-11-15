@@ -12245,7 +12245,9 @@ function withTimeout(p, ms) {
       var g = o.geometry, m = o.material;
       if (blocks.indexOf(o) >= 0) { if (g.attributes.position.array) blocksHeld++; return; }
       if (!g.userData.released || !m.vertexColors || m.map || !g.attributes.color) return;
-      if (g.attributes.color.normalized && !g.attributes.uv) packed++; else loose++;
+      // (a PBR roughness or metalness map reads the uv too — gfx.js's asphalt —
+      // so a uv survives exactly when something samples it)
+      if (g.attributes.color.normalized && (!g.attributes.uv || m.roughnessMap || m.metalnessMap)) packed++; else loose++;
     });
     GAME.scene.traverse(function (o) {
       if (!o.isMesh || !o.geometry || !o.geometry.userData.released) return;

@@ -30,14 +30,14 @@ Want the details? **[Read the full tour →](docs/FEATURES.md)**
 
 <table>
   <tr>
-    <td width="33%"><img src="media/shots/centro-alto.jpg" alt="Centro Alto's towers lit up at dusk" width="100%"><br><sub>Centro Alto at dusk</sub></td>
-    <td width="33%"><img src="media/shots/chase.jpg" alt="Two police cruisers and a helicopter searchlight chasing a car at night" width="100%"><br><sub>A four-star chase</sub></td>
-    <td width="33%"><img src="media/shots/casino.jpg" alt="The Lucky Gull casino on its pier at night" width="100%"><br><sub>The Lucky Gull</sub></td>
+    <td width="33%"><img src="media/shots/gfx-strip-night.jpg" alt="The neon Ocean Strip at night under the new lighting" width="100%"><br><sub>The Ocean Strip at night</sub></td>
+    <td width="33%"><img src="media/shots/gfx-car-night.jpg" alt="A sports car in glossy paint under the neon" width="100%"><br><sub>Fresh paint under the neon</sub></td>
+    <td width="33%"><img src="media/shots/gfx-ped-night.jpg" alt="A pedestrian with a face, hands and shoes under a streetlight" width="100%"><br><sub>A new face in town</sub></td>
   </tr>
   <tr>
-    <td width="33%"><img src="media/shots/showroom.jpg" alt="Inside the Gran Rosa Motors showroom, vehicles on turntables behind the glass front" width="100%"><br><sub>Gran Rosa Motors</sub></td>
-    <td width="33%"><img src="media/shots/speedboat.jpg" alt="A speedboat heading for the beach and the ferris wheel pier" width="100%"><br><sub>Off the east pier</sub></td>
-    <td width="33%"><img src="media/shots/isla-verde.jpg" alt="Isla Verde's hills, towns and observatory" width="100%"><br><sub>Isla Verde</sub></td>
+    <td width="33%"><img src="media/shots/gfx-city-day.jpg" alt="The city in daylight with real shadows" width="100%"><br><sub>Centro Alto in the morning</sub></td>
+    <td width="33%"><img src="media/shots/gfx-sea-reflection.jpg" alt="The neon skyline mirrored on the sea at night" width="100%"><br><sub>The city in its own sea</sub></td>
+    <td width="33%"><img src="media/shots/gfx-sea-close.jpg" alt="Low over the water toward the lit pier" width="100%"><br><sub>Low over the water</sub></td>
   </tr>
 </table>
 
@@ -99,6 +99,17 @@ Run locally (or from `file://`), the game makes no network requests at all. The 
 - All music and sound are synthesized at runtime with the Web Audio API.
 - Every change ships only after headless verification: `test/smoke.js` and `test/regressions.js` run in CI on every push.
 - More in [Under the hood](docs/FEATURES.md#under-the-hood).
+
+## Graphics
+
+The whole town is drawn through a physically based pipeline (`js/gfx.js`) that steps up or down with the machine, and the neon was authored to survive it:
+
+- **Real-time shadows** — the moon (or the sun) throws one soft PCF shadow map over everything near you; buildings, palms, cars and people all ground themselves. The shadow frustum follows the player, snapped to texel centres so it never shimmers.
+- **PBR everywhere** — every surface is a standard material: car paint is metallic gloss, chrome brightwork, rubber matte, glass its own see-through shell. A procedural environment cube (one for night, one for day) gives them all the sky to reflect.
+- **The post chain** — the scene renders linear into a target, a two-scale bloom pulls the neon out of it, and a filmic shoulder rolls the highlights off: signs, window light and headlamps glow the way they always meant to.
+- **Real water** — the ocean is a shader now: animated normals, Schlick fresnel, foam where it meets the sand, moon glitter, and a planar reflection rendered from a mirrored camera (the city lies upside-down in its own sea). The swell is the same two sines the physics has always integrated — swimmers and boats still ride exactly what you see.
+- **Wet streets** — when it rains the asphalt's roughness drops until the neon lies in the road; headlight pools light the way ahead of your car and whichever cruisers are running hot.
+- **Quality tiers** — high runs the whole show; medium trims the shadow map and the reflection; low draws exactly as the town was authored. A live reading of the frame steps shadows and reflections down and back up on its own, the same way the crowd thins on a slow machine.
 
 ## Analytics
 

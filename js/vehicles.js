@@ -195,18 +195,91 @@ function cachedGeo(key, fill) {
   if (!g) {
     var b = new GeoBatch();
     fill(b);
+    // nothing in a vehicle body ever wears a texture: the uv stays unbuilt
+    // and the colour rides as bytes (GeoBatch.build)
+    b.noUV = true;
     g = b.build(); g.userData.shared = true; carGeoCache[key] = g;
   }
   return g;
 }
 
+// ---------- the show-room feel (gfx.js reads this as aRM) ----------
+// Per-part surface response on one merged body: how rough, how metallic.
+// Paint is a metallic base under gloss, trim is the matte plastic and
+// rubber, chrome is the bumpers' brightwork and the hubs' discs.
+var RM_PAINT  = [0.34, 0.72],
+    RM_TRIM   = [0.74, 0.15],
+    RM_CHROME = [0.18, 1.0],
+    RM_TIRE   = [0.95, 0.0],
+    RM_GLASSY = [0.10, 0.6],
+    RM_MATTE  = [0.9, 0.05],
+    RM_HUB    = [0.4, 0.95];
+
+// a cylinder across the axle (the ±x direction) written straight into a
+// GeoBatch, caps and all — the wheel a car actually deserves instead of a
+// box on its edge. `rm` rides every vertex like addBox's does.
+function addWheelCyl(b, cx, cy, cz, r, len, color, rm, seg) {
+  seg = seg || 10;
+  var h = len / 2;
+  var cr = (color >> 16 & 255) / 255, cg = (color >> 8 & 255) / 255, cb = (color & 255) / 255;
+  var ring = [];
+  for (var i = 0; i < seg; i++) {
+    var a = i / seg * Math.PI * 2;
+    ring.push([Math.sin(a), Math.cos(a)]);
+  }
+  var rr = rm[0], rm2 = rm[1];
+  for (i = 0; i < seg; i++) {
+    var p0 = ring[i], p1 = ring[(i + 1) % seg];
+    var y0 = p0[0] * r, z0 = p0[1] * r, y1 = p1[0] * r, z1 = p1[1] * r;
+    var nY = (p0[0] + p1[0]) * 0.5, nZ = (p0[1] + p1[1]) * 0.5;
+    var nl = Math.sqrt(nY * nY + nZ * nZ) || 1; nY /= nl; nZ /= nl;
+    b.room(6);
+    // the side quad, two triangles, corners wound outward
+    b.vert(cx - h, cy + y0, cz + z0, 0, nY, nZ, cr, cg, cb, 0, 0); b.rmVert(rr, rm2);
+    b.vert(cx + h, cy + y0, cz + z0, 0, nY, nZ, cr, cg, cb, 0, 0); b.rmVert(rr, rm2);
+    b.vert(cx + h, cy + y1, cz + z1, 0, nY, nZ, cr, cg, cb, 0, 0); b.rmVert(rr, rm2);
+    b.vert(cx - h, cy + y0, cz + z0, 0, nY, nZ, cr, cg, cb, 0, 0); b.rmVert(rr, rm2);
+    b.vert(cx + h, cy + y1, cz + z1, 0, nY, nZ, cr, cg, cb, 0, 0); b.rmVert(rr, rm2);
+    b.vert(cx - h, cy + y1, cz + z1, 0, nY, nZ, cr, cg, cb, 0, 0); b.rmVert(rr, rm2);
+  }
+  // the two hub faces, a fan to the centre each, wound to face out
+  for (var side = -1; side <= 1; side += 2) {
+    for (i = 0; i < seg; i++) {
+      var q0 = ring[i], q1 = ring[(i + 1) % seg];
+      b.room(3);
+      b.vert(cx + side * h, cy, cz, side, 0, 0, cr, cg, cb, 0, 0); b.rmVert(rr, rm2);
+      if (side > 0) {
+        b.vert(cx + h, cy + q1[0] * r, cz + q1[1] * r, side, 0, 0, cr, cg, cb, 0, 0); b.rmVert(rr, rm2);
+        b.vert(cx + h, cy + q0[0] * r, cz + q0[1] * r, side, 0, 0, cr, cg, cb, 0, 0); b.rmVert(rr, rm2);
+      } else {
+        b.vert(cx - h, cy + q0[0] * r, cz + q0[1] * r, side, 0, 0, cr, cg, cb, 0, 0); b.rmVert(rr, rm2);
+        b.vert(cx - h, cy + q1[0] * r, cz + q1[1] * r, side, 0, 0, cr, cg, cb, 0, 0); b.rmVert(rr, rm2);
+      }
+    }
+  }
+}
+
+// vehicles throw shadows when the tier allows it: their lit meshes only —
+// the glow lamps and the glass ride above that conversation
+function vehicleShadows(g) {
+  var gfx = GAME.gfx;
+  if (!gfx || !gfx.cfg || !gfx.cfg.shadows) return;
+  g.traverse(function (o) {
+    if (o.isMesh && o.material && !o.material.isMeshBasicMaterial && !o.material.transparent) {
+      o.castShadow = true;
+      o.receiveShadow = true;
+    }
+  });
+}
+
 function buildBikeMesh(colorHex, trim) {
   var g = new THREE.Group();
   var body = new THREE.Mesh(cachedGeo('bike|' + colorHex + '|' + (trim || 0), function (b) {
+    b.rmDefault = RM_PAINT;
     b.addBox(0, 0.62, 0, 0.28, 0.34, 1.5, 0, colorHex, 0);       // fuel tank / frame
-    b.addBox(0, 0.78, -0.55, 0.42, 0.14, 0.5, 0, 0x141824, 0);    // seat
-    b.addBox(0, 0.98, 0.62, 0.5, 0.1, 0.1, 0, 0x101014, 0);       // handlebars
-    b.addBox(0, 0.7, 0.7, 0.2, 0.24, 0.24, 0, 0x0c0c10, 0);       // front cowl — wider than the wheel so their side faces don't share a plane
+    b.addBox(0, 0.78, -0.55, 0.42, 0.14, 0.5, 0, 0x141824, 0, null, RM_TRIM);    // seat
+    b.addBox(0, 0.98, 0.62, 0.5, 0.1, 0.1, 0, 0x101014, 0, null, RM_CHROME);       // handlebars
+    b.addBox(0, 0.7, 0.7, 0.2, 0.24, 0.24, 0, 0x0c0c10, 0, null, RM_TRIM);       // front cowl — wider than the wheel so their side faces don't share a plane
     if (trim) {
       // the GT wears a full fairing, a tail cowl and racing stripes in its
       // trim color — reads as a different machine at a glance
@@ -214,20 +287,24 @@ function buildBikeMesh(colorHex, trim) {
       b.addBox(0, 0.6, 0.455, 0.44, 0.1, 0.62, 0, trim, 0);       // fairing stripe — nosed past the tank so their front faces split
       b.addBox(0, 0.82, -0.86, 0.34, 0.16, 0.34, 0, colorHex, 0); // tail cowl
       b.addBox(0, 0.8, 0, 0.32, 0.06, 1.56, 0, trim, 0);          // spine stripe — its top clears the seat's by 2 cm
-      b.addBox(0, 0.9, 0.58, 0.34, 0.16, 0.1, 0, 0x141824, 0);    // screen
+      b.addBox(0, 0.9, 0.58, 0.34, 0.16, 0.1, 0, 0x141824, 0, null, RM_GLASSY);    // screen
     }
-  }), sharedVertexLambert());
+  }), GAME.gfx.sharedVertexPBR());
   g.add(body);
   var bw = new THREE.Mesh(cachedGeo('bikewheels', function (wheel) {
-    wheel.addBox(0, 0.34, 0.82, 0.16, 0.68, 0.68, 0, 0x0c0c10, 0);
-    wheel.addBox(0, 0.34, -0.82, 0.16, 0.68, 0.68, 0, 0x0c0c10, 0);
-  }), sharedVertexLambert());
+    wheel.rmDefault = RM_TIRE;
+    addWheelCyl(wheel, 0, 0.34, 0.82, 0.34, 0.13, 0x0c0c10, RM_TIRE, 12);
+    addWheelCyl(wheel, 0, 0.34, -0.82, 0.34, 0.13, 0x0c0c10, RM_TIRE, 12);
+    addWheelCyl(wheel, 0, 0.34, 0.82, 0.1, 0.16, 0xb8bcc4, RM_HUB, 8);
+    addWheelCyl(wheel, 0, 0.34, -0.82, 0.1, 0.16, 0xb8bcc4, RM_HUB, 8);
+  }), GAME.gfx.sharedVertexPBR());
   g.add(bw);
   g.userData.wheels = bw;
   var hl = new THREE.Mesh(sharedBoxGeo(0.2, 0.14, 0.06), sharedBasic(0xfff2c0));
   hl.position.set(0, 0.72, 0.83);
   g.add(hl);
   g.userData.bodyMesh = body;
+  vehicleShadows(g);
   return g;
 }
 
@@ -276,39 +353,42 @@ function poseHelm(j, jetski) {
 function buildHeliMesh(colorHex, gunship) {
   var g = new THREE.Group();
   var body = new THREE.Mesh(cachedGeo('heli|' + colorHex + '|' + (gunship ? 1 : 0), function (b) {
+    b.rmDefault = RM_PAINT;
     b.addBox(0, 1.2, -0.6, 2.2, 1.7, 3.6, 0, colorHex, 0);        // cabin
     if (gunship) {
       // chin gun, stub wings and rocket pods — it reads military at a glance
-      b.addBox(0, 0.62, 1.35, 0.26, 0.26, 1.1, 0, 0x161a12, 0);
+      b.addBox(0, 0.62, 1.35, 0.26, 0.26, 1.1, 0, 0x161a12, 0, null, RM_MATTE);
       for (var gs = -1; gs <= 1; gs += 2) {
-        b.addBox(gs * 1.85, 1.05, -0.9, 1.5, 0.16, 0.56, 0, 0x2c3626, 0);
-        b.addBox(gs * 2.45, 0.82, -0.9, 0.52, 0.5, 1.7, 0, 0x1f2a1a, 0);
+        b.addBox(gs * 1.85, 1.05, -0.9, 1.5, 0.16, 0.56, 0, 0x2c3626, 0, null, RM_MATTE);
+        b.addBox(gs * 2.45, 0.82, -0.9, 0.52, 0.5, 1.7, 0, 0x1f2a1a, 0, null, RM_MATTE);
       }
     }
     // the canopy rides proud of the cabin roof — flush tops fight for depth
     // (the airplane's cockpit learned this first)
-    b.addBox(0, 1.52, 1.2, 1.7, 1.1, 1.4, 0, 0x141824, 0);        // canopy glass
+    b.addBox(0, 1.52, 1.2, 1.7, 1.1, 1.4, 0, 0x141824, 0, null, RM_GLASSY);        // canopy glass
     b.addBox(0, 1.4, -3.4, 0.5, 0.5, 3.6, 0, colorHex, 0);        // tail boom
     b.addBox(0, 1.9, -5.1, 0.16, 1.1, 0.7, 0, colorHex, 0);       // tail fin
-    b.addBox(-0.9, 0.1, -0.4, 0.14, 0.14, 3.4, 0, 0x0c0c10, 0);   // left skid
-    b.addBox(0.9, 0.1, -0.4, 0.14, 0.14, 3.4, 0, 0x0c0c10, 0);    // right skid
-    b.addBox(-0.9, 0.5, 0.6, 0.1, 0.7, 0.1, 0, 0x0c0c10, 0);
-    b.addBox(0.9, 0.5, 0.6, 0.1, 0.7, 0.1, 0, 0x0c0c10, 0);
-    b.addBox(0, 2.05, -0.6, 0.24, 0.3, 0.24, 0, 0x0c0c10, 0);     // rotor mast
-  }), sharedVertexLambert());
+    b.addBox(-0.9, 0.1, -0.4, 0.14, 0.14, 3.4, 0, 0x0c0c10, 0, null, RM_CHROME);   // left skid
+    b.addBox(0.9, 0.1, -0.4, 0.14, 0.14, 3.4, 0, 0x0c0c10, 0, null, RM_CHROME);    // right skid
+    b.addBox(-0.9, 0.5, 0.6, 0.1, 0.7, 0.1, 0, 0x0c0c10, 0, null, RM_CHROME);
+    b.addBox(0.9, 0.5, 0.6, 0.1, 0.7, 0.1, 0, 0x0c0c10, 0, null, RM_CHROME);
+    b.addBox(0, 2.05, -0.6, 0.24, 0.3, 0.24, 0, 0x0c0c10, 0, null, RM_TRIM);     // rotor mast
+  }), GAME.gfx.sharedVertexPBR());
   g.add(body);
   // spinning main rotor
   var rotor = new THREE.Mesh(cachedGeo('helirotor', function (rg) {
+    rg.rmDefault = RM_TRIM;
     // the blades stack 2 cm apart at the hub, like real ones — crossing in the
     // same plane, their top and bottom faces flickered where they met
     rg.addBox(0, 0, 0, 0.3, 0.06, 11, 0, 0x1a1a20, 0);
     rg.addBox(0, 0.08, 0, 11, 0.06, 0.3, 0, 0x1a1a20, 0);
-  }), sharedVertexLambert());
+  }), GAME.gfx.sharedVertexPBR());
   rotor.position.set(0, 2.3, -0.6);
   g.add(rotor);
   var tail = new THREE.Mesh(cachedGeo('helitail', function (tg) {
+    tg.rmDefault = RM_TRIM;
     tg.addBox(0, 0, 0, 0.14, 0.05, 2.2, 0, 0x1a1a20, 0);
-  }), sharedVertexLambert());
+  }), GAME.gfx.sharedVertexPBR());
   tail.position.set(0.2, 1.9, -5.1);
   g.add(tail);
   var hl = new THREE.Mesh(sharedBoxGeo(0.3, 0.16, 0.06), sharedBasic(0xfff2c0));
@@ -317,6 +397,7 @@ function buildHeliMesh(colorHex, gunship) {
   g.userData.bodyMesh = body;
   g.userData.rotor = rotor;
   g.userData.tailRotor = tail;
+  vehicleShadows(g);
   return g;
 }
 
@@ -325,26 +406,28 @@ function buildPlaneMesh(colors) {
   var g = new THREE.Group();
   g.rotation.order = 'YXZ';
   var mesh = new THREE.Mesh(cachedGeo('plane|' + body + '|' + accent, function (b) {
+    b.rmDefault = RM_PAINT;
     b.addBox(0, 1.2, 0, 1.5, 1.5, 9, 0, body, 0);            // fuselage
     // the canopy rides proud of the fuselage: with both tops on the same plane
     // (1.95) the dark glass and the body fought for depth and the roof flickered
-    b.addBox(0, 1.62, 3.0, 1.1, 0.9, 2.2, 0, 0x141824, 0);   // cockpit glass
+    b.addBox(0, 1.62, 3.0, 1.1, 0.9, 2.2, 0, 0x141824, 0, null, RM_GLASSY);   // cockpit glass
     b.addBox(0, 1.35, -0.4, 12, 0.28, 2.2, 0, body, 0);      // main wing
     // the stripe stands clear of the wing on every face — flush tops shimmer
     b.addBox(0, 1.35, -0.4, 12.1, 0.36, 0.36, 0, accent, 0); // wing stripe
     b.addBox(0, 1.4, -4.4, 4.4, 0.22, 1.2, 0, body, 0);      // tailplane
     b.addBox(0, 2.1, -4.4, 0.22, 1.6, 1.16, 0, accent, 0);   // vertical fin — a shade shorter than the tailplane so their edges don't share planes
-    b.addBox(-0.55, 0.35, 1.0, 0.14, 0.7, 0.14, 0, 0x0c0c10, 0);
-    b.addBox(0.55, 0.35, 1.0, 0.14, 0.7, 0.14, 0, 0x0c0c10, 0);
-    b.addBox(0, 0.4, -3.5, 0.12, 0.5, 0.12, 0, 0x0c0c10, 0);
-  }), sharedVertexLambert());
+    b.addBox(-0.55, 0.35, 1.0, 0.14, 0.7, 0.14, 0, 0x0c0c10, 0, null, RM_CHROME);
+    b.addBox(0.55, 0.35, 1.0, 0.14, 0.7, 0.14, 0, 0x0c0c10, 0, null, RM_CHROME);
+    b.addBox(0, 0.4, -3.5, 0.12, 0.5, 0.12, 0, 0x0c0c10, 0, null, RM_CHROME);
+  }), GAME.gfx.sharedVertexPBR());
   g.add(mesh);
   // nose light + spinning prop
   var prop = new THREE.Mesh(cachedGeo('planeprop', function (pg) {
+    pg.rmDefault = RM_TRIM;
     // same trick as the rotor: crossed blades sit 2 cm apart in depth
     pg.addBox(0, 0, 0, 0.24, 3.4, 0.14, 0, 0x1a1a20, 0);
     pg.addBox(0, 0, 0.02, 3.4, 0.24, 0.14, 0, 0x1a1a20, 0);
-  }), sharedVertexLambert());
+  }), GAME.gfx.sharedVertexPBR());
   prop.position.set(0, 1.2, 4.7);
   g.add(prop);
   var hl = new THREE.Mesh(sharedBoxGeo(0.3, 0.16, 0.06), sharedBasic(0xfff2c0));
@@ -352,26 +435,30 @@ function buildPlaneMesh(colors) {
   g.add(hl);
   g.userData.bodyMesh = mesh;
   g.userData.prop = prop;
+  vehicleShadows(g);
   return g;
 }
 
 function buildMonsterMesh(colorHex) {
   var g = new THREE.Group();
   var body = new THREE.Mesh(cachedGeo('monster|' + colorHex, function (b) {
+    b.rmDefault = RM_PAINT;
     b.addBox(0, 1.85, 0, 2.3, 0.9, 4.6, 0, colorHex, 0);          // chassis
-    b.addBox(0, 2.65, -0.3, 1.9, 0.85, 2.2, 0, 0x141824, 0);      // cab
-    b.addBox(0, 1.25, 0, 0.5, 0.35, 4.0, 0, 0x22262e, 0);         // spine
-    b.addBox(0, 1.85, 2.35, 2.2, 0.5, 0.2, 0, 0x22262e, 0);       // bar
-  }), sharedVertexLambert());
+    b.addBox(0, 2.65, -0.3, 1.9, 0.85, 2.2, 0, 0x141824, 0, null, RM_GLASSY);      // cab
+    b.addBox(0, 1.25, 0, 0.5, 0.35, 4.0, 0, 0x22262e, 0, null, RM_CHROME);         // spine
+    b.addBox(0, 1.85, 2.35, 2.2, 0.5, 0.2, 0, 0x22262e, 0, null, RM_CHROME);       // bar
+  }), GAME.gfx.sharedVertexPBR());
   g.add(body);
   var mw = new THREE.Mesh(cachedGeo('monsterwheels', function (wh) {
     // the tyre tops used to land on exactly the chassis top (both y=2.30) and the
     // two coplanar faces fought for depth wherever they overlapped — tucked under
     // it now, still sitting on the ground at y=0
+    wh.rmDefault = RM_TIRE;
     [[1.25, 1.5], [-1.25, 1.5], [1.25, -1.5], [-1.25, -1.5]].forEach(function (w) {
-      wh.addBox(w[0], 1.06, w[1], 0.62, 2.12, 2.12, 0, 0x0c0c10, 0);
+      addWheelCyl(wh, w[0], 1.06, w[1], 1.06, 0.66, 0x0c0c10, RM_TIRE, 12);
+      addWheelCyl(wh, w[0], 1.06, w[1], 0.42, 0.7, 0xb8bcc4, RM_HUB, 8);
     });
-  }), sharedVertexLambert());
+  }), GAME.gfx.sharedVertexPBR());
   g.add(mw);
   g.userData.wheels = mw;
   g.add(new THREE.Mesh(cachedGeo('monsterglow', function (glow) {
@@ -379,6 +466,7 @@ function buildMonsterMesh(colorHex) {
     glow.addBox(-0.7, 2.1, 2.32, 0.4, 0.2, 0.06, 0, 0xfff2c0, 0);
   }), sharedVertexBasic()));
   g.userData.bodyMesh = body;
+  vehicleShadows(g);
   return g;
 }
 
@@ -388,18 +476,19 @@ function buildMonsterMesh(colorHex) {
 function buildBoatMesh(colorHex, police) {
   var g = new THREE.Group();
   var body = new THREE.Mesh(cachedGeo('boat|' + colorHex, function (b) {
+    b.rmDefault = RM_PAINT;
     b.addBox(0, 0.15, -0.5, 2.0, 0.7, 4.2, 0, colorHex, 0);          // hull
     b.addBox(0, 0.2, 2.15, 1.6, 0.6, 1.1, 0, colorHex, 0);           // bow
     b.addBox(0, 0.26, 2.95, 0.9, 0.48, 0.6, 0, colorHex, 0);         // stem
-    b.addBox(0, 0.4, -0.5, 2.04, 0.1, 4.24, 0, 0xf0f0f4, 0);         // rubbing strake
-    b.addBox(0, 0.52, 2.0, 1.5, 0.06, 1.3, 0, 0xf0f0f4, 0);          // foredeck
-    b.addBox(0, 0.52, -0.7, 1.7, 0.05, 3.4, 0, 0xb08a60, 0);         // cockpit floor
-    b.addBox(0, 0.85, 0.55, 0.8, 0.62, 0.5, 0, 0xf0f0f4, 0);         // console
-    b.addBox(0, 1.3, 0.82, 1.3, 0.36, 0.06, 0, 0x30405a, 0);         // windscreen
-    b.addBox(0, 0.72, -1.95, 1.6, 0.34, 0.6, 0, 0xf0ece0, 0);        // bench
-    b.addBox(0, 0.42, -2.95, 0.42, 0.9, 0.45, 0, 0x20242e, 0);       // outboard leg
+    b.addBox(0, 0.4, -0.5, 2.04, 0.1, 4.24, 0, 0xf0f0f4, 0, null, RM_CHROME);         // rubbing strake
+    b.addBox(0, 0.52, 2.0, 1.5, 0.06, 1.3, 0, 0xf0f0f4, 0, null, RM_TRIM);          // foredeck
+    b.addBox(0, 0.52, -0.7, 1.7, 0.05, 3.4, 0, 0xb08a60, 0, null, RM_MATTE);         // cockpit floor
+    b.addBox(0, 0.85, 0.55, 0.8, 0.62, 0.5, 0, 0xf0f0f4, 0, null, RM_TRIM);         // console
+    b.addBox(0, 1.3, 0.82, 1.3, 0.36, 0.06, 0, 0x30405a, 0, null, RM_GLASSY);         // windscreen
+    b.addBox(0, 0.72, -1.95, 1.6, 0.34, 0.6, 0, 0xf0ece0, 0, null, RM_MATTE);        // bench
+    b.addBox(0, 0.42, -2.95, 0.42, 0.9, 0.45, 0, 0x20242e, 0, null, RM_CHROME);       // outboard leg
     b.addBox(0, 1.0, -2.95, 0.55, 0.4, 0.62, 0, colorHex, 0);        // cowl
-  }), sharedVertexLambert());
+  }), GAME.gfx.sharedVertexPBR());
   g.add(body);
   g.add(new THREE.Mesh(cachedGeo('boatglow', function (glow) {
     glow.addBox(0.8, 0.6, 1.9, 0.08, 0.12, 0.3, 0, 0xff3040, 0);     // port
@@ -410,10 +499,11 @@ function buildBoatMesh(colorHex, police) {
     // a blue band down each side, POLICE on the bow in spirit, and the bar
     // on the console roof that flashes like a cruiser's (police.js)
     g.add(new THREE.Mesh(cachedGeo('boatpolice', function (b) {
+      b.rmDefault = RM_PAINT;
       b.addBox(1.03, 0.3, -0.4, 0.04, 0.18, 3.8, 0, 0x1a3cff, 0);
       b.addBox(-1.03, 0.3, -0.4, 0.04, 0.18, 3.8, 0, 0x1a3cff, 0);
-      b.addBox(0, 1.52, 0.55, 0.9, 0.08, 0.5, 0, 0x20242e, 0);
-    }), sharedVertexLambert()));
+      b.addBox(0, 1.52, 0.55, 0.9, 0.08, 0.5, 0, 0x20242e, 0, null, RM_TRIM);
+    }), GAME.gfx.sharedVertexPBR()));
     var barR = new THREE.Mesh(sharedBoxGeo(0.34, 0.2, 0.3), sharedBasic(0xff2030));
     barR.position.set(0.22, 1.66, 0.55);
     var barB = new THREE.Mesh(sharedBoxGeo(0.34, 0.2, 0.3), sharedBasic(0x2050ff));
@@ -422,6 +512,7 @@ function buildBoatMesh(colorHex, police) {
     g.userData.lightbar = [barR, barB];
   }
   g.userData.bodyMesh = body;
+  vehicleShadows(g);
   return g;
 }
 
@@ -431,20 +522,22 @@ function buildBoatMesh(colorHex, police) {
 function buildJetskiMesh(colorHex) {
   var g = new THREE.Group();
   var body = new THREE.Mesh(cachedGeo('jetski|' + colorHex, function (b) {
+    b.rmDefault = RM_PAINT;
     b.addBox(0, 0.12, -0.2, 1.1, 0.5, 2.3, 0, 0xf0f0f4, 0);           // hull
     b.addBox(0, 0.16, 1.15, 0.8, 0.42, 0.6, 0, 0xf0f0f4, 0);          // nose
     b.addBox(0, 0.2, 1.55, 0.42, 0.3, 0.3, 0, 0xf0f0f4, 0);           // tip
     b.addBox(0, 0.42, 0.2, 1.0, 0.16, 1.9, 0, colorHex, 0);           // deck and cowl
-    b.addBox(0, 0.62, -0.5, 0.46, 0.2, 1.0, 0, 0x20242e, 0);          // saddle
-    b.addBox(0, 0.78, 0.42, 0.14, 0.42, 0.14, 0, 0x20242e, 0);        // steering column
-    b.addBox(0, 0.98, 0.46, 0.78, 0.07, 0.07, 0, 0x20242e, 0);        // handlebars
-    b.addBox(0, 0.1, -1.38, 0.36, 0.2, 0.2, 0, 0x30343e, 0);          // jet nozzle
-  }), sharedVertexLambert());
+    b.addBox(0, 0.62, -0.5, 0.46, 0.2, 1.0, 0, 0x20242e, 0, null, RM_TRIM);          // saddle
+    b.addBox(0, 0.78, 0.42, 0.14, 0.42, 0.14, 0, 0x20242e, 0, null, RM_CHROME);        // steering column
+    b.addBox(0, 0.98, 0.46, 0.78, 0.07, 0.07, 0, 0x20242e, 0, null, RM_CHROME);        // handlebars
+    b.addBox(0, 0.1, -1.38, 0.36, 0.2, 0.2, 0, 0x30343e, 0, null, RM_CHROME);          // jet nozzle
+  }), GAME.gfx.sharedVertexPBR());
   g.add(body);
   g.add(new THREE.Mesh(cachedGeo('jetskiglow', function (glow) {
     glow.addBox(0, 0.62, 1.1, 0.16, 0.08, 0.1, 0, 0xfff2c0, 0);      // a lamp in the nose
   }), sharedVertexBasic()));
   g.userData.bodyMesh = body;
+  vehicleShadows(g);
   return g;
 }
 
@@ -454,29 +547,32 @@ function buildJetskiMesh(colorHex) {
 function buildTankMesh(colorHex) {
   var g = new THREE.Group();
   var hull = new THREE.Mesh(cachedGeo('tank|' + colorHex, function (b) {
+    b.rmDefault = RM_MATTE;
     b.addBox(0, 0.85, 0, 2.7, 0.8, 6.0, 0, colorHex, 0);            // hull
     b.addBox(0, 1.3, 0.5, 2.4, 0.18, 4.4, 0, colorHex, 0);          // deck
     b.addBox(0, 0.9, 3.05, 2.5, 0.5, 0.3, 0.5, colorHex, 0);        // glacis
     [1.42, -1.42].forEach(function (x) {
-      b.addBox(x, 0.5, 0, 0.62, 0.9, 6.4, 0, 0x22241c, 0);         // tracks
-      for (var w = 0; w < 6; w++) b.addBox(x * 1.02, 0.45, -2.5 + w, 0.6, 0.62, 0.62, 0, 0x3a3c30, 0);
-      b.addBox(x, 1.02, 0, 0.7, 0.08, 6.5, 0, 0x2e3226, 0);         // track guard
+      b.addBox(x, 0.5, 0, 0.62, 0.9, 6.4, 0, 0x22241c, 0, null, RM_TIRE);         // tracks
+      for (var w = 0; w < 6; w++) b.addBox(x * 1.02, 0.45, -2.5 + w, 0.6, 0.62, 0.62, 0, 0x3a3c30, 0, null, RM_CHROME);
+      b.addBox(x, 1.02, 0, 0.7, 0.08, 6.5, 0, 0x2e3226, 0, null, RM_TRIM);         // track guard
     });
-    b.addBox(0.9, 1.45, -2.4, 0.5, 0.3, 0.9, 0, 0x2a2e22, 0);       // engine deck grilles
-    b.addBox(-0.9, 1.45, -2.4, 0.5, 0.3, 0.9, 0, 0x2a2e22, 0);
-  }), sharedVertexLambert());
+    b.addBox(0.9, 1.45, -2.4, 0.5, 0.3, 0.9, 0, 0x2a2e22, 0, null, RM_TRIM);       // engine deck grilles
+    b.addBox(-0.9, 1.45, -2.4, 0.5, 0.3, 0.9, 0, 0x2a2e22, 0, null, RM_TRIM);
+  }), GAME.gfx.sharedVertexPBR());
   g.add(hull);
   var turret = new THREE.Group();
   turret.position.set(0, 1.45, 0.3);
   turret.add(new THREE.Mesh(cachedGeo('tankturret|' + colorHex, function (b) {
+    b.rmDefault = RM_MATTE;
     b.addBox(0, 0.42, 0, 2.0, 0.84, 2.4, 0, colorHex, 0);
-    b.addBox(0, 0.9, -0.4, 0.8, 0.2, 0.8, 0, 0x3a4a2e, 0);          // hatch
-    b.addBox(0, 0.48, 2.9, 0.26, 0.26, 3.6, 0, 0x2e3226, 0);        // the gun
+    b.addBox(0, 0.9, -0.4, 0.8, 0.2, 0.8, 0, 0x3a4a2e, 0, null, RM_TRIM);          // hatch
+    b.addBox(0, 0.48, 2.9, 0.26, 0.26, 3.6, 0, 0x2e3226, 0, null, RM_TRIM);        // the gun
     b.addBox(0, 0.48, 1.4, 0.5, 0.5, 0.6, 0, colorHex, 0);          // mantlet
-  }), sharedVertexLambert()));
+  }), GAME.gfx.sharedVertexPBR()));
   g.add(turret);
   g.userData.turret = turret;
   g.userData.bodyMesh = hull;
+  vehicleShadows(g);
   return g;
 }
 
@@ -508,7 +604,12 @@ function buildCarMesh(type, colorHex, parts) {
   var g = new THREE.Group();
   var hl = s.l / 2, hw = s.w / 2;
   var loose = wheelsLoose();
+  // the same cabin maths the body uses, again for the glass below
+  var cabL = s.l * (type === 'armytruck' ? 0.3 : type === 'van' ? 0.85 : type === 'icecream' ? 0.34 : type === 'limo' ? 0.72 : 0.5);
+  var cabZ = type === 'armytruck' ? s.l * 0.3 : type === 'sports' ? -0.35 : type === 'van' ? -0.1
+    : type === 'icecream' ? s.l * 0.28 : type === 'pickup' ? 0.35 : -0.15;
   var body = new THREE.Mesh(cachedGeo('car|' + type + '|' + colorHex + (parts ? '|' + parts : '') + (loose ? '|bare' : ''), function (b) {
+    b.rmDefault = RM_PAINT;
     b.addBox(0, 0.42, 0, s.w, s.bodyH, s.l, 0, colorHex, 0);
     if (type === 'ambulance') {
       // tall box body + red cross panels
@@ -530,9 +631,9 @@ function buildCarMesh(type, colorHex, parts) {
       var boxTop = 2.55, bw = s.w + 0.04, bhw = bw / 2;
       b.addBox(0, 1.5, -0.25, bw, 2.1, s.l * 0.78, 0, colorHex, 0);          // body
       b.addBox(0, 1.02, hl - 0.42, s.w * 0.98, 0.92, 0.9, 0, colorHex, 0);   // stubby bonnet
-      b.addBox(0, 1.9, hl - 0.5, s.w * 0.84, 0.86, 0.14, 0, 0x141824, 0);    // windscreen
-      b.addBox(bhw - 0.02, 1.9, hl - 1.25, 0.1, 0.7, 1.0, 0, 0x141824, 0);   // cab windows
-      b.addBox(-bhw + 0.02, 1.9, hl - 1.25, 0.1, 0.7, 1.0, 0, 0x141824, 0);
+      b.addBox(0, 1.9, hl - 0.5, s.w * 0.84, 0.86, 0.14, 0, 0x141824, 0, null, RM_GLASSY);    // windscreen
+      b.addBox(bhw - 0.02, 1.9, hl - 1.25, 0.1, 0.7, 1.0, 0, 0x141824, 0, null, RM_GLASSY);   // cab windows
+      b.addBox(-bhw + 0.02, 1.9, hl - 1.25, 0.1, 0.7, 1.0, 0, 0x141824, 0, null, RM_GLASSY);
       // the livery: a pink band and a blue pinstripe wrapped round the van.
       // Wider AND longer than the body — with the same length their end faces
       // shared the body's front and rear planes, and the tail flickered
@@ -540,29 +641,29 @@ function buildCarMesh(type, colorHex, parts) {
       b.addBox(0, 1.02, -0.25, bw + 0.08, 0.1, s.l * 0.78 + 0.06, 0, 0x53c8ea, 0);
       // serving hatch, awning and counter on the kerb side — the hatch sits
       // clear of the stripe band's face rather than in the same plane as it
-      b.addBox(bhw + 0.07, 1.82, -0.5, 0.08, 0.9, 1.9, 0, 0x2a2230, 0);
+      b.addBox(bhw + 0.07, 1.82, -0.5, 0.08, 0.9, 1.9, 0, 0x2a2230, 0, null, RM_TRIM);
       b.addBox(bhw + 0.38, 2.36, -0.5, 0.72, 0.08, 2.1, 0, 0xff7fb2, 0);
-      b.addBox(bhw + 0.2, 1.3, -0.5, 0.34, 0.1, 2.0, 0, 0xf0e6d2, 0);
+      b.addBox(bhw + 0.2, 1.3, -0.5, 0.34, 0.1, 2.0, 0, 0xf0e6d2, 0, null, RM_TRIM);
       // roof cones, two abreast: both show from the front, and from the side
       // they sit in the same slice so they read as one
       [-0.5, 0.5].forEach(function (cx2) {
-        b.addBox(cx2, boxTop + 0.05, -0.3, 0.5, 0.5, 0.5, 0.7, 0xe0a860, 0);
-        b.addBox(cx2, boxTop + 0.42, -0.3, 0.66, 0.34, 0.66, 0.35, 0xffd7e4, 0);
-        b.addBox(cx2, boxTop + 0.72, -0.3, 0.5, 0.3, 0.5, 0.9, 0xfff0f4, 0);
-        b.addBox(cx2, boxTop + 0.94, -0.3, 0.28, 0.24, 0.28, 0, 0xffd7e4, 0);
+        b.addBox(cx2, boxTop + 0.05, -0.3, 0.5, 0.5, 0.5, 0.7, 0xe0a860, 0, null, RM_MATTE);
+        b.addBox(cx2, boxTop + 0.42, -0.3, 0.66, 0.34, 0.66, 0.35, 0xffd7e4, 0, null, RM_MATTE);
+        b.addBox(cx2, boxTop + 0.72, -0.3, 0.5, 0.3, 0.5, 0.9, 0xfff0f4, 0, null, RM_MATTE);
+        b.addBox(cx2, boxTop + 0.94, -0.3, 0.28, 0.24, 0.28, 0, 0xffd7e4, 0, null, RM_MATTE);
       });
       // a chime horn on the roof, because the chimes have to come from somewhere
-      b.addBox(-0.62, boxTop + 0.15, 0.9, 0.3, 0.3, 0.44, 0, 0xd8c47a, 0);
+      b.addBox(-0.62, boxTop + 0.15, 0.9, 0.3, 0.3, 0.44, 0, 0xd8c47a, 0, null, RM_CHROME);
     }
     if (type === 'pickup') {
-      b.addBox(0, 0.42 + s.bodyH / 2 + 0.22, -1.05, s.w, 0.45, s.l * 0.44, 0, 0x2a2a34, 0);   // bed walls
+      b.addBox(0, 0.42 + s.bodyH / 2 + 0.22, -1.05, s.w, 0.45, s.l * 0.44, 0, 0x2a2a34, 0, null, RM_TRIM);   // bed walls
     }
     if (type === 'armytruck') {
       // the canvas back, ribbed, over the bed: a few centimetres wider than
       // the body so their flanks never share a plane
-      b.addBox(0, 0.42 + s.bodyH / 2 + 0.8, -0.9, s.w + 0.06, 1.6, s.l * 0.6, 0, 0x6a6a48, 0);
-      for (var rb = 0; rb < 4; rb++) b.addBox(0, 0.42 + s.bodyH / 2 + 1.62, -0.9 - s.l * 0.27 + rb * s.l * 0.18, s.w + 0.1, 0.06, 0.08, 0, 0x4a4a32, 0);
-      b.addBox(hw - 0.4, 0.42 + s.bodyH / 2 + 0.05, -0.9, 0.3, 0.1, s.l * 0.5, 0, 0xf0f0e0, 0);   // a white star stencil, near enough
+      b.addBox(0, 0.42 + s.bodyH / 2 + 0.8, -0.9, s.w + 0.06, 1.6, s.l * 0.6, 0, 0x6a6a48, 0, null, RM_MATTE);
+      for (var rb = 0; rb < 4; rb++) b.addBox(0, 0.42 + s.bodyH / 2 + 1.62, -0.9 - s.l * 0.27 + rb * s.l * 0.18, s.w + 0.1, 0.06, 0.08, 0, 0x4a4a32, 0, null, RM_MATTE);
+      b.addBox(hw - 0.4, 0.42 + s.bodyH / 2 + 0.05, -0.9, 0.3, 0.1, s.l * 0.5, 0, 0xf0f0e0, 0, null, RM_MATTE);   // a white star stencil, near enough
     }
     if (type === 'tiger') {
       // The stripes, black on the yellow: down both flanks, each one leaning
@@ -591,26 +692,54 @@ function buildCarMesh(type, colorHex, parts) {
     if (s.buggy) {
       // no cabin at all: a roll hoop over an open tub. The cross bar is wider
       // than the posts — matching widths put their side faces in one plane
-      b.addBox(0, 1.05, -0.5, 0.12, 1.2, 0.12, 0, 0x2a2a34, 0);
-      b.addBox(0, 1.05, 0.5, 0.12, 1.2, 0.12, 0, 0x2a2a34, 0);
-      b.addBox(0, 1.6, 0, 0.16, 0.12, 1.1, 0, 0x2a2a34, 0);
+      b.addBox(0, 1.05, -0.5, 0.12, 1.2, 0.12, 0, 0x2a2a34, 0, null, RM_CHROME);
+      b.addBox(0, 1.05, 0.5, 0.12, 1.2, 0.12, 0, 0x2a2a34, 0, null, RM_CHROME);
+      b.addBox(0, 1.6, 0, 0.16, 0.12, 1.1, 0, 0x2a2a34, 0, null, RM_CHROME);
     }
-    if (s.cabinH > 0) {
-      b.addBox(0, 0.42 + s.bodyH / 2 + s.cabinH / 2 - 0.05, cabZ, s.w * 0.82, s.cabinH, cabL, 0, type === 'police' ? 0x20242e : 0x141824, 0);
-    }
-    if (!(parts & 1)) b.addBox(0, 0.28, hl * 0.72, s.w * 0.9, 0.32, 0.55, 0, 0x22262e, 0);
-    if (!(parts & 2)) b.addBox(0, 0.28, -hl * 0.72, s.w * 0.9, 0.32, 0.55, 0, 0x22262e, 0);
+    // the cabin is GLASS now (its own mesh below): what stays here is the
+    // car around it
+    if (!(parts & 1)) b.addBox(0, 0.28, hl * 0.72, s.w * 0.9, 0.32, 0.55, 0, 0x22262e, 0, null, RM_TRIM);
+    if (!(parts & 2)) b.addBox(0, 0.28, -hl * 0.72, s.w * 0.9, 0.32, 0.55, 0, 0x22262e, 0, null, RM_TRIM);
     if (!loose) carWheels(b, s, hw, hl, 1);
     if (type === 'police') {
       // a centimetre up: its underside used to share the cabin's bottom plane
-      b.addBox(0, 0.42 + s.bodyH / 2 + 0.01, s.l * 0.28, s.w * 0.7, 0.1, 1.2, 0, 0x30405a, 0);
+      b.addBox(0, 0.42 + s.bodyH / 2 + 0.01, s.l * 0.28, s.w * 0.7, 0.1, 1.2, 0, 0x30405a, 0, null, RM_TRIM);
     }
-  }), sharedVertexLambert());
+    if (!s.buggy && s.cabinH > 0) {
+      // the brightwork and the small print: mirrors at the screen's pillars,
+      // a door seam down each flank, a grille between the lamps and a chrome
+      // pipe under the tail — the details a showroom shot lives on
+      var mirY = 0.42 + s.bodyH / 2 + s.cabinH * 0.5;
+      b.addBox(hw + 0.13, mirY, cabZ + cabL / 2 - 0.08, 0.15, 0.06, 0.09, 0, colorHex, 0);
+      b.addBox(-hw - 0.13, mirY, cabZ + cabL / 2 - 0.08, 0.15, 0.06, 0.09, 0, colorHex, 0);
+      b.addBox(hw + 0.012, 0.72, cabZ + 0.05, 0.02, 0.36, 0.03, 0, 0x0a0a0e, 0, null, RM_TRIM);
+      b.addBox(-hw - 0.012, 0.72, cabZ + 0.05, 0.02, 0.36, 0.03, 0, 0x0a0a0e, 0, null, RM_TRIM);
+    }
+    if (!s.buggy) {
+      b.addBox(0, 0.52, hl + 0.012, s.w * 0.32, 0.16, 0.03, 0, 0x14161c, 0, null, RM_TRIM);   // the grille
+      b.addBox(hw * 0.45, 0.2, -hl - 0.06, 0.08, 0.08, 0.16, 0, 0xb8bcc4, 0, null, RM_CHROME); // the exhaust
+    }
+  }), GAME.gfx.sharedVertexPBR());
   g.add(body);
+
+  // the glass: the whole cabin, one see-through shell that picks up the sky
+  // and the streetlights off its own reflection. Cached like the body, worn
+  // by every car of the type alike.
+  if (s.cabinH > 0) {
+    var glass = new THREE.Mesh(cachedGeo('carglass|' + type, function (b) {
+      b.rmDefault = RM_GLASSY;
+      b.addBox(0, 0.42 + s.bodyH / 2 + s.cabinH / 2 - 0.05, cabZ, s.w * 0.82, s.cabinH, cabL, 0,
+        type === 'police' ? 0x20242e : 0x141824, 0);
+    }), GAME.gfx.glassMaterial());
+    g.add(glass);
+  }
 
   if (loose) {
     var k = wheelSize();
-    var wheels = new THREE.Mesh(cachedGeo('carwheels|' + type + '|' + k, function (b) { carWheels(b, s, hw, hl, k); }), sharedVertexLambert());
+    var wheels = new THREE.Mesh(cachedGeo('carwheels|' + type + '|' + k, function (b) {
+      b.rmDefault = RM_TIRE;
+      carWheels(b, s, hw, hl, k);
+    }), GAME.gfx.sharedVertexPBR());
     g.add(wheels);
     g.userData.wheels = wheels;
     g.userData.wheelsKey = type + '|' + k;
@@ -634,6 +763,7 @@ function buildCarMesh(type, colorHex, parts) {
     g.userData.lightbar = [barR, barB];
   }
   g.userData.bodyMesh = body;
+  vehicleShadows(g);
   return g;
 }
 
@@ -663,14 +793,15 @@ function armourVan(car) {
   if (!g || g.userData.beacon || s !== VEHICLES.van) return;
   var hw = s.w / 2, hl = s.l / 2, cabHW = s.w * 0.82 / 2, roof = 0.42 + s.bodyH / 2 + s.cabinH - 0.05;
   g.add(new THREE.Mesh(cachedGeo('securityvan', function (b) {
+    b.rmDefault = RM_PAINT;
     b.addBox(hw + 0.015, 0.6, 0, 0.03, 0.14, s.l - 0.3, 0, 0xe8b830, 0);           // gold stripe, both flanks
     b.addBox(-hw - 0.015, 0.6, 0, 0.03, 0.14, s.l - 0.3, 0, 0xe8b830, 0);
-    b.addBox(0, 0.5, hl + 0.12, s.w - 0.1, 0.42, 0.12, 0, 0x30343c, 0);              // bull bar
-    b.addBox(0, 0.86, hl + 0.12, s.w - 0.3, 0.08, 0.1, 0, 0x30343c, 0);
-    b.addBox(0, 1.2, -hl + 0.05, 0.04, 0.9, 0.08, 0, 0x101216, 0);                   // the back doors' seam
-    b.addBox(0, 1.05, -hl + 0.02, s.w * 0.7, 0.08, 0.1, 0, 0x8a9098, 0);             // and the bar across them
-    b.addBox(0, roof + 0.05, hl - 1.0, 0.7, 0.1, 0.36, 0, 0x20242e, 0);              // the beacon's base
-  }), sharedVertexLambert()));
+    b.addBox(0, 0.5, hl + 0.12, s.w - 0.1, 0.42, 0.12, 0, 0x30343c, 0, null, RM_CHROME);              // bull bar
+    b.addBox(0, 0.86, hl + 0.12, s.w - 0.3, 0.08, 0.1, 0, 0x30343c, 0, null, RM_CHROME);
+    b.addBox(0, 1.2, -hl + 0.05, 0.04, 0.9, 0.08, 0, 0x101216, 0, null, RM_TRIM);                   // the back doors' seam
+    b.addBox(0, 1.05, -hl + 0.02, s.w * 0.7, 0.08, 0.1, 0, 0x8a9098, 0, null, RM_CHROME);             // and the bar across them
+    b.addBox(0, roof + 0.05, hl - 1.0, 0.7, 0.1, 0.36, 0, 0x20242e, 0, null, RM_TRIM);              // the beacon's base
+  }), GAME.gfx.sharedVertexPBR()));
   [1, -1].forEach(function (side) {
     var p = new THREE.Mesh(sharedBoxGeo(0.02, 0.42, 2.4), securityPanel());
     // (a box's +x and -x faces both run their map the way you read it from
@@ -686,12 +817,14 @@ function armourVan(car) {
   g.add(a); g.add(b2);
   g.userData.beacon = [a, b2];
 }
-// the four wheels of a car, `k` times their size (and a little wider, so a
-// big one does not read as a disc on its edge)
+// the four wheels of a car, `k` times their size — rubber cylinders with a
+// bright hub disc each, instead of the boxes they always were
 function carWheels(b, s, hw, hl, k) {
-  var wy = 0.32 * k, wx = hw - 0.12 + (k > 1 ? 0.12 : 0), wz = hl * 0.56;
+  var wy = 0.34 * k, wx = hw - 0.13 + (k > 1 ? 0.13 : 0), wz = hl * 0.56;
+  var r = 0.34 * k, wid = 0.3 * (k > 1 ? 1.2 : 1);
   [[wx, wz], [-wx, wz], [wx, -wz], [-wx, -wz]].forEach(function (w) {
-    b.addBox(w[0], wy, w[1], k > 1 ? 0.42 : 0.32, 0.64 * k, 0.72 * k, 0, 0x0c0c10, 0);
+    addWheelCyl(b, w[0], wy, w[1], r, wid, 0x0c0c10, RM_TIRE, 10);
+    addWheelCyl(b, w[0], wy, w[1], r * 0.52, wid + 0.045, 0xb8bcc4, RM_HUB, 8);
   });
 }
 

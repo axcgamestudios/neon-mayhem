@@ -77,6 +77,10 @@
     scene.add(head.target);
     GAME.lights = { hemi: hemi, dir: moon, ambient: warm, head: head };
 
+    // the AAA layer (gfx.js): shadows, the post chain, the environment cube,
+    // the water rig — everything the world is about to be built with
+    GAME.gfx.init(renderer, scene, camera);
+
     GAME.city.build(scene);
     GAME.weather.build(scene);
     GAME.fx.init(scene);
@@ -101,10 +105,11 @@
     // whole world goes up to the GPU now, and its arrays go with it (see
     // releaseStatic), rather than each piece the first time it comes into
     // view — which was also a stall mid-game, the first time you turned
-    // toward something new.
+    // toward something new. The statics throw their shadows from here too.
+    GAME.gfx.setShadowCaster(scene);
     var culled = [];
     scene.traverse(function (o) { if (o.frustumCulled) { culled.push(o); o.frustumCulled = false; } });
-    renderer.render(scene, camera);
+    GAME.gfx.render(scene, camera);
     for (var ci = 0; ci < culled.length; ci++) culled[ci].frustumCulled = true;
     // only now can a press do anything: the title stops saying LOADING
     GAME.hud.titleReady();
@@ -113,6 +118,7 @@
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
+      GAME.gfx.resize();
     });
 
     GAME.onKeyDown = function (code) {
@@ -682,6 +688,7 @@
   GAME.applyQuality = function () {
     var q = QUALITY[GAME.quality], S = GAME.settings;
     if (GAME.renderer) GAME.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, S.pixelRatioCap) * q.res);
+    if (GAME.gfx) GAME.gfx.applyQuality();
     if (GAME.scene && GAME.scene.fog && GAME.lights) GAME.applyTimeOfDay(GAME.timeOfDay);
   };
   GAME.setQuality = function (name, quiet) {
@@ -828,7 +835,11 @@
     var relH = cam.position.y - GAME.city.surfaceY(cam.position.x, cam.position.z, cam.position.y);
     var wantNear = relH > (cam.near > 0.2 ? 34 : 46) ? 2.0 : 0.1;
     if (wantNear !== cam.near) { cam.near = wantNear; cam.updateProjectionMatrix(); }
-    renderer.render(GAME.scene, GAME.cameraObj);
+    // the AAA layer's own frame: the shadow frustum follows whatever the
+    // camera is watching, the water's colours track the clock, the rain
+    // wets the asphalt and the headlight pools find their cars
+    GAME.gfx.tick(real);
+    GAME.gfx.render(GAME.scene, GAME.cameraObj);
     // a photo is taken from the frame just drawn (photo.js)
     GAME.photo.capture(renderer.domElement);
     // the shop's turntable preview spins even while the sim is frozen

@@ -1850,6 +1850,13 @@ GAME.shops = (function () {
       j.legL.children[0].material = new THREE.MeshLambertMaterial({ color: byId(PANTS, o.pants).hex });
       j.legR.children[0].material = j.legL.children[0].material;
       j.head.material = new THREE.MeshLambertMaterial({ color: o.skin });
+      // the hands follow the skin the mirror is showing (gfx.js's detailed
+      // bodies): the skinPart child behind each arm's own mesh
+      [j.armL, j.armR].forEach(function (arm) {
+        if (arm.children[1] && arm.children[1].userData && arm.children[1].userData.skinPart) {
+          arm.children[1].material = j.head.material;
+        }
+      });
       var hair = GAME.peds.makeHair(o.hairStyle, byId(HAIRCOLORS, o.hairColor).hex);
       if (hair) { hair.position.y = 1.6; m.add(hair); }
       pv.obj = m;
