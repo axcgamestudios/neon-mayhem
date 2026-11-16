@@ -51,7 +51,7 @@
     GAME.renderer = renderer;
 
     var scene = new THREE.Scene();
-    scene.fog = new THREE.Fog(0x2a1440, 110, GAME.isTouch ? 320 : 430);
+    scene.fog = new THREE.Fog(0x0d1420, 110, GAME.isTouch ? 320 : 430);
     GAME.scene = scene;
 
     // the near plane here is only a placeholder: the render loop drives it
@@ -61,12 +61,15 @@
     camera.position.set(340, 6, 30);
     GAME.cameraObj = camera;
 
-    var hemi = new THREE.HemisphereLight(0x4a3a7a, 0x1a1024, 0.85);
+    // the light rig, physically plain: a sky-blue hemisphere over a warm
+    // ground bounce, one warm-white sun, a whisper of ambient. The neon
+    // lives in the SIGNS and the windows, not in the daylight
+    var hemi = new THREE.HemisphereLight(0xbcd4f0, 0x9a8f78, 0.9);
     scene.add(hemi);
-    var moon = new THREE.DirectionalLight(0x8a94ff, 0.55);
-    moon.position.set(500, 400, -150);
+    var moon = new THREE.DirectionalLight(0xfff3e0, 1.25);
+    moon.position.set(420, 260, -126);
     scene.add(moon);
-    var warm = new THREE.AmbientLight(0x40203a, 0.7);
+    var warm = new THREE.AmbientLight(0x6f7884, 0.32);
     scene.add(warm);
     // headlights: one spot that follows whatever the player is driving, lit
     // only after dark. A single light keeps this cheap on mobile.
@@ -111,8 +114,12 @@
     scene.traverse(function (o) { if (o.frustumCulled) { culled.push(o); o.frustumCulled = false; } });
     GAME.gfx.render(scene, camera);
     for (var ci = 0; ci < culled.length; ci++) culled[ci].frustumCulled = true;
-    // only now can a press do anything: the title stops saying LOADING
-    GAME.hud.titleReady();
+    // the ground set (asphalt, concrete, sand) lands while the title still
+    // says LOADING: the world goes up with its placeholder surfacing, the
+    // 4K-derived maps swap in the moment they arrive, and only then does a
+    // press do anything. Nine seconds is the long end — no file holds the
+    // game, the failsafe sees to that (gfx.js texturesReady)
+    GAME.gfx.texturesReady(function () { GAME.hud.titleReady(); });
 
     window.addEventListener('resize', function () {
       camera.aspect = window.innerWidth / window.innerHeight;
@@ -301,13 +308,16 @@
     });
   }
 
-  // night (df 0) and day (df 1) endpoint palettes; intermediate df gives dusk
-  var TOD_NIGHT = { fog: 0x2a1440, near: 110, hemi: 0x4a3a7a, ground: 0x1a1024, hemiI: 0.85, dir: 0x8a94ff, dirI: 0.55, amb: 0x40203a, ambI: 0.7, clear: 0x0a0714 };
-  var TOD_DAY = { fog: 0xbcd0e8, near: 150, hemi: 0xcfe0ff, ground: 0x9a8a70, hemiI: 1.05, dir: 0xfff2d0, dirI: 1.0, amb: 0x6a6674, ambI: 0.5, clear: 0x9fbce0 };
+  // night (df 0) and day (df 1) endpoint palettes; intermediate df gives dusk.
+  // Both ends stay neutral and physical — moonlight blue, daylight white with
+  // a warm sun — so the city reads real at any hour and the neon stays in the
+  // signs where it belongs
+  var TOD_NIGHT = { fog: 0x0d1420, near: 110, hemi: 0x2e3d5c, ground: 0x181a1e, hemiI: 0.5, dir: 0xb9c8e8, dirI: 0.4, amb: 0x18202e, ambI: 0.45, clear: 0x05070c };
+  var TOD_DAY = { fog: 0xc8d5e2, near: 150, hemi: 0xbcd4f0, ground: 0x9a8f78, hemiI: 0.9, dir: 0xfff3e0, dirI: 1.25, amb: 0x6f7884, ambI: 0.32, clear: 0x9fc0e8 };
   var _cN = new THREE.Color(), _cD = new THREE.Color(), _cT = new THREE.Color(), _cR = new THREE.Color();
-  var RAIN_NIGHT = 0x231c2e, RAIN_DAY = 0x7c8394;   // what the fog turns to under rain
-  var CLOUD_NIGHT = 0x2a2532, CLOUD_DAY = 0x9aa2ae;  // ...under a grey lid of cloud
-  var MIST_NIGHT = 0x37323f, MIST_DAY = 0xc3c8cd;    // ...and in a fog bank
+  var RAIN_NIGHT = 0x10151c, RAIN_DAY = 0x7c8394;   // what the fog turns to under rain
+  var CLOUD_NIGHT = 0x14181f, CLOUD_DAY = 0x9aa2ae;  // ...under a grey lid of cloud
+  var MIST_NIGHT = 0x1a1e24, MIST_DAY = 0xc3c8cd;    // ...and in a fog bank
   var MIST_NEAR = 6, MIST_FAR = 110;                // a fog bank: the city ends here
   function lerpHex(a, b, t, target) { _cN.setHex(a); _cD.setHex(b); target.copy(_cN).lerp(_cD, t); return target; }
 

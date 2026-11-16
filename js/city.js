@@ -501,10 +501,17 @@ GAME.city = (function () {
     // grid between them. The pale-walled twins pass something thinner, and
     // the glass then carries the tint like the rest of the wall does.
     var dim = opts.dim || 'rgba(30,34,58,0.9)';
+    // Detail is 2x what it was (1024x768 on a real GPU, the old 512x384 on a
+    // phone or a software GL where the bytes matter more): panes get frames,
+    // sills, a reflection band and a share of grime below — deterministic,
+    // out of a hash of where the window sits, so the rng stream below is
+    // untouched and the same seed still builds the same city.
+    var smallTex = GAME.isTouch || (GAME.gfx && GAME.gfx.flatTier && GAME.gfx.flatTier());
+    var W = smallTex ? 512 : 1024, H = W * 0.75;
     var cv = document.createElement('canvas');
-    cv.width = 512; cv.height = 384;
+    cv.width = W; cv.height = H;
     var g = cv.getContext('2d');
-    g.fillStyle = wall; g.fillRect(0, 0, 512, 384);
+    g.fillStyle = wall; g.fillRect(0, 0, W, H);
     // only the pale twins have a glow apart from their map (see above)
     var gv = null, e = null;
     if (opts.glowAll) {
@@ -512,16 +519,15 @@ GAME.city = (function () {
       // The glow only says which windows are lit and how brightly, and at a
       // street's distance or further the two sizes cannot be told apart; up
       // against a facade a lit window's edge is a little softer. It saves
-      // three quarters of each one's GPU memory, about 0.8 MB a texture, four
-      // of them. (Compared side by side at street level and across the
-      // skyline before it was chosen.)
+      // three quarters of each one's GPU memory. (Compared side by side at
+      // street level and across the skyline before it was chosen.)
       gv = document.createElement('canvas');
-      gv.width = 256; gv.height = 192;
+      gv.width = W / 2; gv.height = H / 2;
       e = gv.getContext('2d');
       e.scale(0.5, 0.5);
-      e.fillStyle = '#000'; e.fillRect(0, 0, 512, 384);
+      e.fillStyle = '#000'; e.fillRect(0, 0, W, H);
     }
-    var cw = 512 / cols, ch = 384 / rows;
+    var cw = W / cols, ch = H / rows;
     for (var i = 0; i < cols; i++) for (var j = 0; j < rows; j++) {
       var lit = rnd() < litProb;
       var pad = cw * 0.22;
@@ -530,6 +536,26 @@ GAME.city = (function () {
       var col = lit ? litColors[Math.floor(rnd() * litColors.length)] : dim;
       var wx = i * cw + pad, wy = j * ch + ch * 0.2, ww = cw - pad * 2, wh = ch * 0.55;
       g.fillStyle = col; g.fillRect(wx, wy, ww, wh);
+      if (!smallTex) {
+        // deterministic per-window detail: frame, sill, a pane reflection and
+        // a share of weathering below — hashed off the cell, never the stream
+        var hsh = ((i * 73856093) ^ (j * 19349663)) >>> 0;
+        var roll = (hsh % 997) / 997;
+        var fw = Math.max(1, cw * 0.03);
+        g.fillStyle = 'rgba(0,0,0,0.30)';
+        g.fillRect(wx - fw, wy - fw, ww + fw * 2, fw);
+        g.fillRect(wx - fw, wy + wh, ww + fw * 2, fw);
+        g.fillRect(wx - fw, wy - fw, fw, wh + fw * 2);
+        g.fillRect(wx + ww, wy - fw, fw, wh + fw * 2);
+        g.fillStyle = 'rgba(255,255,255,' + (0.05 + roll * 0.06).toFixed(3) + ')';
+        g.fillRect(wx, wy, ww, wh * 0.32);
+        g.fillStyle = 'rgba(0,0,0,0.20)';
+        g.fillRect(wx - fw, wy + wh + fw, ww + fw * 2, Math.max(1, ch * 0.035));
+        if (roll > 0.55) {
+          g.fillStyle = 'rgba(0,0,0,0.10)';
+          g.fillRect(wx, wy + wh + ch * 0.06, ww, ch * 0.16);
+        }
+      }
       // Every window has a light of its own in the glow, for the night to
       // switch on building by building (see lamBlock). An unlit one takes its
       // colour from where it sits, not from the stream, so the daylight
@@ -541,12 +567,12 @@ GAME.city = (function () {
     }
     if (bandColor) {
       g.fillStyle = bandColor;
-      for (var b = 0; b < rows; b++) g.fillRect(0, b * ch - 2, 512, 5);
+      for (var b = 0; b < rows; b++) g.fillRect(0, b * ch - H / 192, W, H / 192 * 2.5);
     }
     // keep the left column plain so roof uvs sample the wall — and black in
     // a separate glow, or every pale roof in the city would be lit from inside
-    g.fillStyle = wall; g.fillRect(0, 0, Math.floor(cw * 0.2), 384);
-    if (e) { e.fillStyle = '#000'; e.fillRect(0, 0, Math.floor(cw * 0.2), 384); }
+    g.fillStyle = wall; g.fillRect(0, 0, Math.floor(cw * 0.2), H);
+    if (e) { e.fillStyle = '#000'; e.fillRect(0, 0, Math.floor(cw * 0.2), H); }
     // the wall's brightest channel, 0-1: where a lit window stops and wall begins
     var wv = parseInt(wall.slice(1), 16);
     var wallMax = Math.max((wv >> 16) & 255, (wv >> 8) & 255, wv & 255) / 255;
@@ -630,6 +656,8 @@ GAME.city = (function () {
     // (software GL keeps the walls as Lambert — gfx.surface decides)
     var m = GAME.gfx.surface({
       map: t.map, emissive: 0xbbbbcc, emissiveMap: t.glow, vertexColors: true,
+      normalMap: GAME.gfx.facadeNormal ? GAME.gfx.facadeNormal() : null,
+      normalScale: new THREE.Vector2(0.45, 0.45),
       roughness: 0.86, metalness: 0.06, envInt: 0.4
     });
     // The source text is the same for every block material, so three.js
@@ -789,8 +817,8 @@ GAME.city = (function () {
     var atlas = signAtlas();
     city.signSlots = atlas.slots;
 
-    // base land
-    batches.ground.addGroundQuad(-70, 0, 0, 860, 1000, 0, 0x17131f);
+    // base land — neutral ground under everything (the concrete set shades it)
+    batches.ground.addGroundQuad(-70, 0, 0, 860, 1000, 0, 0x6a6d72);
     // asphalt: vertical roads
     var asphalt = new GeoBatch();
     // the grid stops at the airport fence: the roads that used to run the full
@@ -800,8 +828,8 @@ GAME.city = (function () {
     for (var i = 0; i < R.length; i++) {
       var hitsAirport = R[i] + ROAD_HALF > AP.fx0 && R[i] - ROAD_HALF < AP.fx1;
       var zEnd = hitsAirport ? AP.fz0 - 1 : 480;
-      asphalt.addGroundQuad(R[i], 0.03, (-480 + zEnd) / 2, ROAD_HALF * 2, zEnd + 480, 0, 0x100e16);
-      asphalt.addGroundQuad(-72, 0.03, R[i], 856, ROAD_HALF * 2, 0, 0x100e16);
+      asphalt.addGroundQuad(R[i], 0.03, (-480 + zEnd) / 2, ROAD_HALF * 2, zEnd + 480, 0, 0x5e636b);
+      asphalt.addGroundQuad(-72, 0.03, R[i], 856, ROAD_HALF * 2, 0, 0x5e636b);
       // Dashed centre lines — stopping short of every crossing, the way the
       // paint does. They used to run on straight through each junction, and
       // the two roads' lines crossed in a plus in the middle of every box.
@@ -815,16 +843,18 @@ GAME.city = (function () {
       var jEnd = R[ji] + ROAD_HALF > AP.fx0 && R[ji] - ROAD_HALF < AP.fx1 ? AP.fz0 - 1 : 480;
       for (var jj = 0; jj < R.length; jj++) junctionMarks(batches.marks, R[ji], R[jj], jEnd);
     }
-    // sidewalks around each block
+    // sidewalks around each block — light concrete; the concrete set in
+    // gfx.js carries the slabs, these tints only shade them per district
+    var SW_TINT = 0xb6b2ac;
     for (var bi = 0; bi < R.length - 1; bi++) for (var bj = 0; bj < R.length - 1; bj++) {
       var cx = (R[bi] + R[bi + 1]) / 2, cz = (R[bj] + R[bj + 1]) / 2;
-      batches.ground.addBox(cx, 0.09, cz - 42, 88, 0.18, 4, 0, 0x2c2838, 0);
-      batches.ground.addBox(cx, 0.09, cz + 42, 88, 0.18, 4, 0, 0x2c2838, 0);
-      batches.ground.addBox(cx - 42, 0.085, cz, 4, 0.17, 80, 0, 0x2c2838, 0);
-      batches.ground.addBox(cx + 42, 0.085, cz, 4, 0.17, 80, 0, 0x2c2838, 0);
+      batches.ground.addBox(cx, 0.09, cz - 42, 88, 0.18, 4, 0, SW_TINT, 0);
+      batches.ground.addBox(cx, 0.09, cz + 42, 88, 0.18, 4, 0, SW_TINT, 0);
+      batches.ground.addBox(cx - 42, 0.085, cz, 4, 0.17, 80, 0, SW_TINT, 0);
+      batches.ground.addBox(cx + 42, 0.085, cz, 4, 0.17, 80, 0, SW_TINT, 0);
     }
     // boulevard east sidewalk
-    batches.ground.addBox(358, 0.09, 0, 4, 0.18, 960, 0, 0x2c2838, 0);
+    batches.ground.addBox(358, 0.09, 0, 4, 0.18, 960, 0, SW_TINT, 0);
 
     // the boardwalk's railing posts and the airport's fence posts: several
     // hundred identical boxes, drawn as copies of one (see BoxSet)
@@ -865,6 +895,8 @@ GAME.city = (function () {
     function lam(t) {
       return GAME.gfx.surface({
         map: t.map, emissive: 0xbbbbcc, emissiveMap: t.glow, vertexColors: true,
+        normalMap: GAME.gfx.facadeNormal ? GAME.gfx.facadeNormal() : null,
+        normalScale: new THREE.Vector2(0.45, 0.45),
         roughness: 0.88, metalness: 0.05, envInt: 0.35
       });
     }
@@ -879,17 +911,15 @@ GAME.city = (function () {
       scene.add(m);
       return m;
     }
-    addMesh(batches.ground, sharedVertexLambert());
-    // asphalt, physically based: a grain of roughness out of the shared noise
-    // tile (gfx.js), and rain takes the roughness down until the street
-    // carries the neon — the wet look, without a single extra light.
+    addMesh(batches.ground, GAME.gfx.flatTier() ? sharedVertexLambert() : GAME.gfx.terrainMaterial('concrete', 3.2));
+    // asphalt, physically based: the 4K-derived set out of gfx.js — aggregate
+    // grain, tar snakes, tyre polish — tiling in world metres, and rain takes
+    // the roughness down until the street carries the neon: the wet look,
+    // without a single extra light.
     // (software GL keeps the road exactly as it was — Phong, vertex colours)
     var roadMat = GAME.gfx.flatTier()
       ? new THREE.MeshPhongMaterial({ vertexColors: true, shininess: 70, specular: 0x232e42 })
-      : GAME.gfx.surface({
-          vertexColors: true, roughness: 0.93, metalness: 0.04,
-          roughnessMap: GAME.gfx.asphaltRoughnessMap(), envInt: 0.3
-        });
+      : GAME.gfx.asphaltMaterial({ vertexColors: true });
     if (GAME.gfx) GAME.gfx.registerWet(roadMat);
     addMesh(asphalt, roadMat);
     // road paint always wins its tie against the asphalt beneath it — a
@@ -1782,7 +1812,7 @@ GAME.city = (function () {
       fringe(fx - 0.25, fx + 20.25, ssh - 26, ssh, 0.46 + ((sIdx + 1) % 2) * 0.06, U.pick(rng, sandShades));
       sIdx++;
     }
-    var sandMesh = new THREE.Mesh(sand.build(), sharedVertexLambert());
+    var sandMesh = new THREE.Mesh(sand.build(), GAME.gfx.flatTier() ? sharedVertexLambert() : GAME.gfx.terrainMaterial('sand', 6));
     sandMesh.matrixAutoUpdate = false;
     scene.add(sandMesh);
 
@@ -1911,13 +1941,17 @@ GAME.city = (function () {
     }
 
   function buildSky(scene) {
+    // a physical sky, both ends of the clock: the day a clear deep-blue
+    // zenith into pale horizon haze, the night near-black blue with a faint
+    // lighter band where the city's own light catches the air. The gradient
+    // runs nadir (stop 0) to zenith (stop 1); the stops under the horizon are
+    // kept DIM on purpose — that band is what the sea's far edge shows, and
+    // anything bright there blooms and washes pink across the whole sky
     var nightTex = skyGradient([
-      [0, '#3a1440'], [0.12, '#5a1e52'], [0.24, '#8a2a5e'],
-      [0.38, '#4a2266'], [0.6, '#221244'], [1, '#0a0620']
+      [0, '#0a1220'], [0.5, '#0b1526'], [0.78, '#081020'], [1, '#04070e']
     ]);
     var dayTex = skyGradient([
-      [0, '#ffd7a8'], [0.14, '#ffb98a'], [0.3, '#8fb8e8'],
-      [0.55, '#5a92d8'], [1, '#2f63b0']
+      [0, '#c8d4de'], [0.5, '#c2d6ea'], [0.62, '#9cc2e6'], [0.78, '#6a9fd8'], [1, '#3a74c8']
     ]);
     city.skyTextures = { night: nightTex, day: dayTex };
     // The whole celestial set rides in one group that follows the camera.
@@ -1972,6 +2006,27 @@ GAME.city = (function () {
     halo.lookAt(0, 0, 0);
     celestial.add(halo);
     city.moonHalo = halo;
+
+    // the sun: a bright warm disc and a wide soft halo, riding the SAME
+    // slant the shadow light and the sea's specular answer to (gfx.sunDir),
+    // so the rays, the shadows and the glitter on the water all agree on
+    // where the light is coming from. Drawn under the weather veil, so an
+    // overcast sky covers it like it covers the moon
+    var sd = GAME.gfx.sunDir();
+    var sun = new THREE.Mesh(new THREE.CircleGeometry(44, 28), new THREE.MeshBasicMaterial({ color: 0xfff3d0, fog: false, transparent: true, opacity: 0 }));
+    sun.position.copy(sd).multiplyScalar(1290);
+    sun.lookAt(0, 0, 0);
+    sun.renderOrder = -8.5;
+    celestial.add(sun);
+    city.sun = sun;
+    var sunHalo = new THREE.Mesh(new THREE.CircleGeometry(175, 28), new THREE.MeshBasicMaterial({ map: radialGlowTexture('rgba(255,238,196,0.55)'), transparent: true, blending: THREE.AdditiveBlending, fog: false, depthWrite: false, opacity: 0 }));
+    sunHalo.position.copy(sun.position).multiplyScalar(0.985);
+    sunHalo.lookAt(0, 0, 0);
+    sunHalo.renderOrder = -8.6;
+    celestial.add(sunHalo);
+    city.sunHalo = sunHalo;
+    // the god rays (gfx.js) aim at this disc
+    if (GAME.gfx.setSunVisual) GAME.gfx.setSunVisual(sun);
   }
 
   // df in [0,1]: 0 = deep night, ~0.4 = dusk/sunset, 1 = full day
@@ -1989,6 +2044,17 @@ GAME.city = (function () {
     if (city.stars) { city.stars.material.opacity = U.clamp(1 - df * 2.2, 0, 1) * clear; city.stars.material.transparent = true; city.stars.visible = df < 0.5 && wet < 0.9; }
     if (city.moon) city.moon.material.opacity = U.clamp(1 - df * 1.6, 0.05, 1) * U.clamp(clear, 0.05, 1), city.moon.material.transparent = true;
     if (city.moonHalo) city.moonHalo.material.opacity = U.clamp(0.5 - df * 0.8, 0, 0.5) * clear;
+    // the sun takes the sky from the moon as the day comes up, and goes in
+    // behind the weather like everything else
+    var sunI = U.clamp((df - 0.62) / 0.26, 0, 1) * U.clamp(clear, 0, 1);
+    if (city.sun) {
+      city.sun.material.opacity = sunI;
+      city.sun.visible = sunI > 0.02;
+    }
+    if (city.sunHalo) {
+      city.sunHalo.material.opacity = sunI * 0.9;
+      city.sunHalo.visible = sunI > 0.02;
+    }
     // street lamps burn at night, fade out through dusk, and are off in daylight
     var lampOn = U.clamp(1 - (df - 0.45) / 0.35, 0, 1);
     // and so do the windows' own lights, building by building (see lamBlock)

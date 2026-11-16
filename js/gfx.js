@@ -1,11 +1,13 @@
 // gfx.js — the AAA graphics layer
 //
 // Everything that makes Costa Rosa look like a modern game lives here:
-// real-time shadows, an HDR-ish post chain (bloom + ACES filmic + FXAA +
-// vignette), a procedural environment cube so every PBR surface picks up
-// the sky, a planar-reflection ocean shader with animated normals, foam and
-// the same CPU-matched swell the physics has always run on, wet-asphalt
-// under rain, and headlight pools on the road at night.
+// real-time shadows off a low golden-hour sun, an HDR-ish post chain (bloom +
+// god rays + ACES filmic + FXAA + vignette), a procedural environment cube so
+// every PBR surface picks up the sky, a planar-reflection ocean shader with
+// animated normals, foam and the same CPU-matched swell the physics has
+// always run on, 4K-derived ground surfacing (asphalt, concrete, sand) that
+// tiles in world metres out of media/textures, wet-asphalt under rain, and
+// headlight pools on the road at night.
 //
 // The layer is quality-tiered and falls back gracefully: on LOW (or a
 // phone) it steps out of the way and the renderer tone-maps directly, so
@@ -23,9 +25,9 @@
   'use strict';
 
   var CFG = {
-    high:   { shadows: 1536, shadowR: 135, post: true,  reflection: 512, reflEvery: 1, detailPeds: true },
-    medium: { shadows: 1024, shadowR: 115, post: true,  reflection: 384, reflEvery: 2, detailPeds: true },
-    low:    { shadows: 0,    shadowR: 110, post: false, reflection: 0,   reflEvery: 0, detailPeds: false }
+    high:   { shadows: 2560, shadowR: 100, post: true,  reflection: 512, reflEvery: 1, detailPeds: true,  tex: 2048 },
+    medium: { shadows: 1536, shadowR: 110, post: true,  reflection: 384, reflEvery: 2, detailPeds: true,  tex: 1024 },
+    low:    { shadows: 0,    shadowR: 110, post: false, reflection: 0,   reflEvery: 0, detailPeds: false, tex: 512 }
   };
 
   var gfx = {
@@ -36,9 +38,25 @@
   window.GFX = gfx;
   GAME.gfx = gfx;
 
+  // The sun's one true slant, shared by the shadow light, the sea's specular
+  // and the disc in the sky (city.js buildSky reads it through gfx.sunDir): a
+  // low golden-hour angle (24 degrees up, out over the sea to the east), so
+  // the city gets long readable shadows and the light shafts something to
+  // pour through — and the sun itself rides inside the camera's reach, which
+  // stops at a whisker above the horizon. One constant, three agreement.
+  var SUN_OFF = { x: 460, y: 215, z: -138 };
+  gfx.SUN_OFF = SUN_OFF;
+  var SUN_DIR = null;
+  gfx.sunDir = function () {
+    if (!SUN_DIR) {
+      var l = Math.sqrt(SUN_OFF.x * SUN_OFF.x + SUN_OFF.y * SUN_OFF.y + SUN_OFF.z * SUN_OFF.z);
+      SUN_DIR = new THREE.Vector3(SUN_OFF.x / l, SUN_OFF.y / l, SUN_OFF.z / l);
+    }
+    return SUN_DIR;
+  };
+
   var renderer = null, scene = null, camera = null;
   var TONE = THREE.NoToneMapping;   // set at init; never flipped mid-session
-
   // ---------- shared procedural textures ----------
   // One 256x256 RGBA tile is stretched to every purpose: water normals (RG),
   // asphalt grain (B) and fine flake noise (A) all read the same upload, and
@@ -97,6 +115,147 @@
     return asphaltRough;
   };
 
+  // ---------- the ground texture set ----------
+  // Real surfacing, generated offline (tools/gen_textures.py in the repo):
+  // 4K masters shipped as 2048 albedo / 1024 normal + roughness, tileable and
+  // hue-neutral so the city's vertex tints still decide a street's shade.
+  // Every texture starts life as an 8x8 grey placeholder — nothing ever
+  // renders black while a file is in flight — and when the image arrives it
+  // is scaled to the quality tier FIRST (a phone or a software GL uploads
+  // 512s, not 2048s: the file is big once, the memory never is) and swapped
+  // into every clone at once. A file that never arrives never blocks play.
+  var texReg = {}, texPending = 0, texCbs = [], texTimer = null, texReady = false;
+  var MAXANISO = 4;
+  function texPlaceholder() {
+    var cv = document.createElement('canvas');
+    cv.width = cv.height = 8;
+    var c = cv.getContext('2d');
+    c.fillStyle = '#8c8c8c';
+    c.fillRect(0, 0, 8, 8);
+    return cv;
+  }
+  function groundTex(name) {
+    var r = texReg[name];
+    if (!r) { r = texReg[name] = { image: null, texs: [], started: false }; }
+    var t = new THREE.Texture(r.image || texPlaceholder());
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.anisotropy = MAXANISO;
+    r.texs.push(t);
+    if (!r.started) { r.started = true; texStartLoad(name, r); }
+    return t;
+  }
+  function texStartLoad(name, r) {
+    texPending++;
+    var tier = gfx.cfg ? (gfx.cfg.tex || 1024) : 1024;
+    new THREE.ImageLoader().load('media/textures/' + name + '.jpg', function (img) {
+      var w = img.naturalWidth || img.width;
+      var assign = function (image) {
+        r.image = image;
+        r.texs.forEach(function (tx) { tx.image = image; tx.needsUpdate = true; });
+        texDone();
+      };
+      var canvasCopy = function () {
+        var cv = document.createElement('canvas');
+        cv.width = cv.height = tier;
+        cv.getContext('2d').drawImage(img, 0, 0, tier, tier);
+        assign(cv);
+      };
+      // ImageBitmap where the browser can: the decoded pixels live outside
+      // the JS heap, and the resize happens off it too. Failing that, a
+      // canvas at the tier; failing THAT, the element as it came
+      if (w > tier) {
+        if (window.createImageBitmap) {
+          createImageBitmap(img, { resizeWidth: tier, resizeHeight: tier, resizeQuality: 'medium' })
+            .then(assign, canvasCopy);
+        } else canvasCopy();
+      } else if (window.createImageBitmap) {
+        createImageBitmap(img).then(assign, function () { assign(img); });
+      } else assign(img);
+    }, undefined, function () { texDone(); });
+  }
+  function texDone() {
+    texPending--;
+    if (texPending <= 0) texFire();
+  }
+  function texFire() {
+    if (texTimer) { clearTimeout(texTimer); texTimer = null; }
+    texReady = true;
+    var cbs = texCbs; texCbs = [];
+    cbs.forEach(function (cb) { try { cb(); } catch (e) { } });
+  }
+  // boot gate: fires once every asked-for file has landed (or failed), and
+  // never later than nine seconds — the game does not wait on a file
+  gfx.texturesReady = function (cb) {
+    if (texReady || texPending <= 0) { cb(); return; }
+    texCbs.push(cb);
+    if (!texTimer) texTimer = setTimeout(texFire, 9000);
+  };
+  gfx._texStats = function () {
+    return { pending: texPending, ready: texReady,
+      loaded: Object.keys(texReg).filter(function (k) { return !!texReg[k].image; }).length };
+  };
+
+  // Ground surfacing tiles in WORLD METRES, not whatever uv a quad was
+  // handed (one road quad can be a kilometre long): the hook rewrites the uv
+  // every map samples from the vertex's own world xz.
+  function groundUV(tileMetres) {
+    return function (sh) {
+      sh.uniforms.uGroundTile = { value: 1 / tileMetres };
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <uv_pars_vertex>', '#include <uv_pars_vertex>\nuniform float uGroundTile;')
+        .replace('#include <uv_vertex>', 'vUv = ( modelMatrix * vec4( position, 1.0 ) ).xz * uGroundTile;');
+      if (sh.vertexShader.indexOf('uGroundTile') < 0) {
+        if (window.console && console.error) console.error('gfx: ground uv hook missing');
+      }
+    };
+  }
+
+  // the street itself: aggregate grain, tar snakes and tyre polish out of
+  // the asphalt set, rough enough to drink the light and wet right down
+  // under rain (registerWet, as before)
+  gfx.asphaltMaterial = function (opts) {
+    if (gfx.flatTier()) {
+      return new THREE.MeshPhongMaterial({ vertexColors: !!(opts && opts.vertexColors), shininess: 70, specular: 0x232e42 });
+    }
+    var m = new THREE.MeshStandardMaterial({
+      vertexColors: !!(opts && opts.vertexColors),
+      map: groundTex('asphalt'),
+      normalMap: groundTex('asphalt_n'),
+      roughnessMap: groundTex('asphalt_r'),
+      roughness: 1, metalness: 0.02, envMapIntensity: 0.35
+    });
+    if (envCube) m.envMap = envCube;
+    m.normalScale.set(0.85, 0.85);
+    m.onBeforeCompile = groundUV(11);
+    groundMats.push(m);
+    return m;
+  };
+  // concrete and sand: the shared terrain material for the ground and beach
+  // batches (vertex colours tint districts; the maps carry the surface)
+  gfx.terrainMaterial = function (kind, tileMetres) {
+    if (gfx.flatTier()) return new THREE.MeshLambertMaterial({ vertexColors: true });
+    var m = new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      map: groundTex(kind),
+      normalMap: groundTex(kind + '_n'),
+      roughnessMap: kind === 'concrete' ? groundTex('concrete_r') : null,
+      roughness: 1, metalness: 0,
+      envMapIntensity: kind === 'sand' ? 0.16 : 0.3
+    });
+    if (envCube) m.envMap = envCube;
+    m.normalScale.set(0.7, 0.7);
+    m.onBeforeCompile = groundUV(tileMetres);
+    groundMats.push(m);
+    return m;
+  };
+  // stucco grain for every facade in town (city.js lam/lamBlock): the
+  // buildings keep their window maps and gain a plaster normal
+  gfx.facadeNormal = function () {
+    if (gfx.flatTier()) return null;
+    return groundTex('plaster_n');
+  };
+  var groundMats = [];
+
   // ---------- the environment cube ----------
   // A 128px-per-face cube built from gradients, a moon/sun disc and a neon
   // horizon glow — reflected by every PBR material in the city. Two are
@@ -113,18 +272,22 @@
   function buildEnvCube(night) {
     var S = 128;
     var faces = [];
-    var nightTop = night ? '#141034' : '#4a86d8';
-    var nightHor = night ? '#3d1c4e' : '#cfe4f4';
-    var glowCols = ['#ff4fa3', '#38e8ff', '#ffe14f', '#c86bff', '#59ffc8'];
+    // a physically plain sky: blue zenith into a pale horizon by day, deep
+    // blue with a whisper of the city's own light at night — every PBR
+    // surface reflects it, so it stays honest and never tints the town pink
+    var nightTop = night ? '#060b16' : '#3f78c8';
+    var nightHor = night ? '#0e1a2c' : '#cfe2f2';
+    // the city's horizon light in its own colours: sodium amber and cool
+    // glass — warm and quiet, no neon pink in the reflections
+    var glowCols = ['#ffb46b', '#6bd4ff', '#ffe9b0', '#8ad0e8', '#ffc98a'];
     function glow(ctx, w, h) {
-    // the city's own light lying along the horizon, in its own colours
       for (var i = 0; i < 5; i++) {
         var x = (i * 37 + 13) % (w - 30), r = 18 + (i * 23) % 30;
         var gr = ctx.createRadialGradient(x, h, 2, x, h, r);
         gr.addColorStop(0, glowCols[(i + (night ? 0 : 2)) % glowCols.length]);
         gr.addColorStop(1, 'rgba(0,0,0,0)');
         ctx.fillStyle = gr;
-        ctx.globalAlpha = night ? 0.5 : 0.16;
+        ctx.globalAlpha = night ? 0.26 : 0.05;
         ctx.fillRect(x - r, h - r, r * 2, r * 2);
         ctx.globalAlpha = 1;
       }
@@ -151,17 +314,18 @@
       return cv;
     }
     var moon = side(function (ctx, w, h) {
-      // the moon rides the +x face, up and to the right: the same quarter the
-      // directional light comes from (500, 400, -150 in main.js), so paint
-      // and glass catch a highlight that agrees with the shadows
-      var x = w * 0.32, y = h * 0.26, r = night ? 15 : 12;
+      // the sun by day and the moon by night ride the +x face, up and to the
+      // right: the same quarter the directional light comes from (SUN_OFF in
+      // gfx.js), so paint and glass catch a highlight that agrees with the
+      // shadows the buildings throw
+      var x = w * 0.38, y = h * 0.30, r = night ? 14 : 13;
       var gr = ctx.createRadialGradient(x, y, 2, x, y, r * 2.6);
-      gr.addColorStop(0, night ? '#ffffff' : '#fff6d8');
-      gr.addColorStop(0.45, night ? 'rgba(210,220,255,0.5)' : 'rgba(255,240,200,0.55)');
+      gr.addColorStop(0, night ? '#ffffff' : '#fff8e0');
+      gr.addColorStop(0.45, night ? 'rgba(200,214,255,0.4)' : 'rgba(255,242,205,0.55)');
       gr.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = gr;
       ctx.fillRect(x - r * 2.6, y - r * 2.6, r * 5.2, r * 5.2);
-      ctx.fillStyle = night ? '#f4f6ff' : '#fff2c8';
+      ctx.fillStyle = night ? '#e8edf8' : '#fff2c4';
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
       ctx.fill();
@@ -171,14 +335,14 @@
       var cv = document.createElement('canvas');
       cv.width = cv.height = S;
       var ctx = cv.getContext('2d');
-      envFace(ctx, S, S, night ? '#0a0824' : '#2f6fc0', nightTop, stars);
+      envFace(ctx, S, S, night ? '#04070e' : '#3a72c4', nightTop, stars);
       return cv;
     })();
     var down = (function () {
       var cv = document.createElement('canvas');
       cv.width = cv.height = S;
       var ctx = cv.getContext('2d');
-      envFace(ctx, S, S, night ? '#120a20' : '#7a90a8', night ? '#0c0716' : '#4a5a70', null);
+      envFace(ctx, S, S, night ? '#0a0c10' : '#8b9096', night ? '#08090c' : '#5a6068', null);
       return cv;
     })();
     // CubeTexture face order: +x, -x, +y, -y, +z, -z
@@ -206,6 +370,8 @@
       roughness: opts.roughness !== undefined ? opts.roughness : 0.85,
       metalness: opts.metalness !== undefined ? opts.metalness : 0.0,
       map: opts.map || null,
+      normalMap: opts.normalMap || null,
+      normalScale: opts.normalScale || new THREE.Vector2(1, 1),
       emissive: opts.emissive !== undefined ? opts.emissive : 0x000000,
       emissiveMap: opts.emissiveMap || null,
       transparent: !!opts.transparent,
@@ -285,6 +451,8 @@
       color: o.color !== undefined ? o.color : 0xffffff,
       vertexColors: !!o.vertexColors,
       map: o.map || null,
+      normalMap: o.normalMap || null,
+      normalScale: o.normalScale || new THREE.Vector2(1, 1),
       emissive: o.emissive !== undefined ? o.emissive : 0x000000,
       emissiveMap: o.emissiveMap || null,
       transparent: !!o.transparent,
@@ -423,6 +591,7 @@
     'uniform sampler2D tScene; uniform sampler2D tBloomA; uniform sampler2D tBloomB;',
     'uniform vec2 uRcp; uniform float uBloom; uniform float uExposure;',
     'uniform float uVignette; uniform float uAA; uniform float uFilmic;',
+    'uniform vec2 uSunUV; uniform float uSunI; uniform vec3 uSunCol; uniform float uAspect;',
     'varying vec2 vUv;',
     FXAA_GLSL,
     // ACES (Stephen Hill's fit): the filmic curve the whole industry runs
@@ -435,11 +604,35 @@
     '  c *= uExposure;',
     '  const mat3 IN = mat3(0.59719, 0.07600, 0.02840, 0.35458, 0.90834, 0.13383, 0.04823, 0.01566, 0.83777);',
     '  const mat3 OUT = mat3(1.60475, -0.10208, -0.00327, -0.53108, 1.10813, -0.07276, -0.07367, -0.00605, 1.07602);',
-    '  return clamp(rrtOdt(IN * c) * OUT, 0.0, 1.0);',
+    // NB: the matrix goes on the LEFT. In GLSL, `v * M` is a row-vector
+    // multiply — it applies the TRANSPOSE — and the transposed output fit
+    // turns every neutral in the frame magenta (0.5 grey in, (144,48,95)
+    // out, measured). `M * v` is the fit as Hill wrote it.
+    '  return clamp(OUT * rrtOdt(IN * c), 0.0, 1.0);',
+    '}',
+    // Crepuscular rays — the sun's light pouring through the streets. The
+    // classic screen-space march (GPU Gems 3, ch.13): step from the pixel
+    // toward the sun's screen position, let only what was bright enough
+    // (the disc, the sky near it) contribute, and fade along the way. The
+    // buildings themselves, darker than sky, are what carves the shafts.
+    'vec3 sunRays(vec2 uv){',
+    '  vec2 d = (uSunUV - uv) * vec2(uAspect, 1.0);',
+    '  vec2 stp = d * (0.92 / 30.0);',
+    '  vec3 acc = vec3(0.0);',
+    '  float decay = 1.0;',
+    '  for (int i = 0; i < 30; i++) {',
+    '    uv += stp / vec2(uAspect, 1.0);',
+    '    vec3 s = texture2D(tScene, clamp(uv, 0.0, 1.0)).rgb;',
+    '    float l = max(s.r, max(s.g, s.b));',
+    '    acc += s * smoothstep(0.58, 0.95, l) * decay;',
+    '    decay *= 0.955;',
+    '  }',
+    '  return acc / 18.0;',
     '}',
     'void main(){',
     '  vec3 c = uAA > 0.5 ? fxaa(tScene, vUv, uRcp) : texture2D(tScene, vUv).rgb;',
     '  c += (texture2D(tBloomA, vUv).rgb * 0.62 + texture2D(tBloomB, vUv).rgb * 0.38) * uBloom;',
+    '  if (uSunI > 0.001) c += sunRays(vUv) * uSunCol * uSunI;',
     // The town was authored to be shown exactly as it was painted — no
     // encode, no curve — so the composite takes only ACES's SHOULDER: the
     // mids stay as lit, the top end rolls off instead of clipping, and the
@@ -480,13 +673,15 @@
     post.camFS = new THREE.Camera();
     post.quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), null);
     post.sceneFS.add(post.quad);
-    post.bright = fsMaterial(BRIGHT_FRAG, { tIn: { value: null }, uThresh: { value: 0.72 } });
+    post.bright = fsMaterial(BRIGHT_FRAG, { tIn: { value: null }, uThresh: { value: 0.78 } });
     post.blur = fsMaterial(BLUR_FRAG, { tIn: { value: null }, uDir: { value: new THREE.Vector2() } });
     post.comp = fsMaterial(COMP_FRAG, {
       tScene: { value: null }, tBloomA: { value: null }, tBloomB: { value: null },
       uRcp: { value: new THREE.Vector2(1 / w, 1 / h) },
-      uBloom: { value: 0.55 }, uExposure: { value: 1.0 },
-      uVignette: { value: 0.22 }, uAA: { value: 1 }, uFilmic: { value: 0.6 }
+      uBloom: { value: 0.34 }, uExposure: { value: 1.05 },
+      uVignette: { value: 0.26 }, uAA: { value: 1 }, uFilmic: { value: 0.85 },
+      uSunUV: { value: new THREE.Vector2(0.5, 0.5) }, uSunI: { value: 0 },
+      uSunCol: { value: new THREE.Color(1, 0.88, 0.7) }, uAspect: { value: w / h }
     });
   }
   function disposePost() {
@@ -516,8 +711,10 @@
     c.left = -radius; c.right = radius; c.top = radius; c.bottom = -radius;
     c.near = 10; c.far = 900;
     c.updateProjectionMatrix();
-    d.shadow.bias = -0.0006;
-    d.shadow.normalBias = 0.7;
+    // the lower sun throws longer shadows and grazes more: a touch more
+    // normal bias keeps the acnes off the walls it slides along
+    d.shadow.bias = -0.0004;
+    d.shadow.normalBias = 1.2;
     if (!shadowTarget) {
       shadowTarget = new THREE.Object3D();
       GAME.scene.add(shadowTarget);
@@ -559,10 +756,49 @@
     var texel = world / size;
     var x = Math.round(f.x / texel) * texel;
     var z = Math.round(f.z / texel) * texel;
-    // the light keeps its own fixed slant on the city (500,400,-150 in main.js)
+    // the light keeps its own fixed slant on the city (SUN_OFF above): the
+    // same direction the sun disc rides and the sea's specular answers to
     shadowTarget.position.set(x, 0, z);
-    shadowLight.position.set(x + 250, 400, z - 75);
+    shadowLight.position.set(x + SUN_OFF.x, SUN_OFF.y, z + SUN_OFF.z);
     shadowTarget.updateMatrixWorld();
+  }
+
+  var _sunW = new THREE.Vector3(), _sunV = new THREE.Vector3(), _sunP = new THREE.Vector3();
+  var sunVisual = null;
+  // city.js buildSky hands the sun disc over; the rays aim at wherever it
+  // actually is on screen this frame
+  gfx.setSunVisual = function (mesh) { sunVisual = mesh; };
+  gfx._sunScreen = function () {   // test hook: where the rays point, and how hard
+    var u = post.on && post.comp ? post.comp.uniforms : null;
+    return u ? { uv: [u.uSunUV.value.x, u.uSunUV.value.y], i: u.uSunI.value } : null;
+  };
+  // test hook: the post chain's own materials and targets (test/diag.js)
+  gfx._post = function () { return post; };
+  function updateSun() {
+    var u = post.on && post.comp ? post.comp.uniforms : null;
+    if (!u) return;
+    var I = 0;
+    if (sunVisual && sunVisual.visible && camera) {
+      sunVisual.getWorldPosition(_sunW);
+      _sunV.copy(_sunW).applyMatrix4(camera.matrixWorldInverse);
+      if (_sunV.z < -1) {   // in front of the camera, not behind it
+        _sunP.copy(_sunW).project(camera);
+        var edge = Math.max(Math.abs(_sunP.x), Math.abs(_sunP.y));
+        var fade = U.clamp((1.35 - edge) / 0.5, 0, 1);
+        var df = GAME.timeOfDay || 0;
+        var dayI = U.clamp((df - 0.55) / 0.3, 0, 1);
+        var W = GAME.weather;
+        var grey = Math.max(W ? W.rain : 0, Math.max(W ? W.cloud : 0, W ? W.mist : 0));
+        var clear = 1 - U.clamp(grey * 1.15, 0, 1);
+        if (GAME.player && GAME.player.interior) clear = 0;   // no shafts across a ceiling
+        I = 0.55 * dayI * clear * fade;
+        u.uSunUV.value.set((_sunP.x + 1) / 2, (_sunP.y + 1) / 2);
+        // golden at the low hours, warm white at noon
+        var t = U.clamp((df - 0.55) / 0.45, 0, 1);
+        u.uSunCol.value.setRGB(1, U.lerp(0.8, 0.94, t), U.lerp(0.58, 0.85, t));
+      }
+    }
+    u.uSunI.value = I;
   }
 
   // ---------- the ocean ----------
@@ -673,9 +909,9 @@
         uWave: { value: waveUniform },
         uDeep: { value: new THREE.Color(0x07142a) },
         uShallow: { value: new THREE.Color(0x0e4a5e) },
-        uSunDir: { value: new THREE.Vector3(-0.55, 0.5, -0.2).normalize() },
-        uSunColor: { value: new THREE.Color(0x8a94ff) },
-        uFogColor: { value: new THREE.Color(0x2a1440) },
+        uSunDir: { value: gfx.sunDir().clone() },
+        uSunColor: { value: new THREE.Color(0xbcc8e8) },
+        uFogColor: { value: new THREE.Color(0x0d1420) },
         uFogNear: { value: 110 }, uFogFar: { value: 430 },
         uReflAmt: { value: 0 },
         uTime: { value: 0 }
@@ -894,7 +1130,7 @@
       var L = GAME.lights;
       if (L) {
         u.uSunColor.value.copy(L.dir.color).multiplyScalar(L.dir.intensity);
-        u.uSunDir.value.set(0.52, 0.83, -0.16).normalize();
+        u.uSunDir.value.copy(gfx.sunDir());
       }
       var fog = scene.fog;
       if (fog) {
@@ -921,6 +1157,7 @@
     for (var k in SHARED.mat) {
       if (k[0] === 'S') list.push(SHARED.mat[k]);
     }
+    for (var i = 0; i < groundMats.length; i++) list.push(groundMats[i]);
     list.forEach(function (m) { if (m && m.envMap !== undefined) m.envMap = tex; });
   }
 
@@ -948,6 +1185,7 @@
 
   gfx.init = function (rend, sc, cam) {
     renderer = rend; scene = sc; camera = cam;
+    try { MAXANISO = Math.min(8, renderer.capabilities.getMaxAnisotropy() || 4); } catch (e) { MAXANISO = 4; }
     gfx.applyQuality(true);
     // env cubes
     envNight = buildEnvCube(true);
@@ -962,14 +1200,16 @@
     gfx.qualityName = name;
     var base = CFG[name] || CFG.high;
     var cfg = { shadows: base.shadows, shadowR: base.shadowR, post: base.post,
-      reflection: base.reflection, reflEvery: base.reflEvery, detailPeds: base.detailPeds };
-    // a phone has no headroom for shadows or mirror renders; the bloom stays
-    if (GAME.isTouch) { cfg.shadows = 0; cfg.reflection = 0; cfg.detailPeds = false; }
+      reflection: base.reflection, reflEvery: base.reflEvery, detailPeds: base.detailPeds, tex: base.tex };
+    // a phone has no headroom for shadows, mirror renders or 2048s of grain;
+    // the bloom stays
+    if (GAME.isTouch) { cfg.shadows = 0; cfg.reflection = 0; cfg.detailPeds = false; cfg.tex = Math.min(cfg.tex, 512); }
     // software GL (see softwareGL above): the look without the passes it
-    // cannot afford — no shadows, no mirror render, no post chain, and the
-    // people keep the simpler figures (every extra mesh is a draw call)
+    // cannot afford — no shadows, no mirror render, no post chain, 512s of
+    // grain, and the people keep the simpler figures (every extra mesh is a
+    // draw call)
     if (softwareTrim && !gfx._noSoftwareTrim && renderer && softwareGL()) {
-      cfg.shadows = 0; cfg.reflection = 0; cfg.post = false; cfg.detailPeds = false;
+      cfg.shadows = 0; cfg.reflection = 0; cfg.post = false; cfg.detailPeds = false; cfg.tex = 512;
     }
     // the live perf system starving says more than any tier: step down
     // (and back up — tickPerfGate watches the reading and re-runs this)
@@ -1049,6 +1289,8 @@
     renderer.clear();
     renderer.render(sc, cam);
     renderer.setRenderTarget(null);
+    // where the sun sits on screen this frame, and how hard the rays may run
+    updateSun();
     // bloom: bright-pass into half, blur it, down into quarter, blur again
     post.bright.uniforms.tIn.value = post.rt.texture;
     drawQuad(post.bright, post.half);

@@ -396,7 +396,7 @@ var path = require('path');
 var { chromium } = require('playwright');
 
 var ROOT = path.join(__dirname, '..');
-var MIME = { '.html': 'text/html', '.js': 'text/javascript', '.png': 'image/png', '.json': 'application/json', '.svg': 'image/svg+xml' };
+var MIME = { '.html': 'text/html', '.js': 'text/javascript', '.png': 'image/png', '.jpg': 'image/jpeg', '.json': 'application/json', '.svg': 'image/svg+xml' };
 
 function serve() {
   return new Promise(function (resolve) {
@@ -3393,8 +3393,16 @@ function withTimeout(p, ms) {
   var lolaPages = con.pages.filter(function (p) { return /^LOLA: /.test(p); });
   check('story: Lola pages a line when a job starts and another when it is done the first time',
     lolaPages.length >= 2 && /^LOLA: /.test(con.pages[0]) && con.pages.indexOf(lolaPages[lolaPages.length - 1]) > 0, JSON.stringify(con.pages));
+  // (Rico has his say after hers, about his collector. The VERY LAST page is
+  // not his to keep: when the chase ends near another job's ring the next
+  // job starts on the tick after his page — the code a few lines up says
+  // that is how it should read — and on a machine that draws at a different
+  // pace his page and the next job's start land in a different order in the
+  // same captured window. His page being there, after all of hers about the
+  // collector, is the regression either way.)
+  var ricoIdx = con.pages.findIndex(function (p) { return /^RICO: /.test(p); });
   check('story: and Rico pages back, after her, the first time a job costs him',
-    /^RICO: /.test(con.pages[con.pages.length - 1]) && con.pages.length >= 3, JSON.stringify(con.pages));
+    ricoIdx >= 2 && con.pages.length >= 3, JSON.stringify(con.pages));
   check('takedown: there are takedown jobs on both islands', con.defs >= 3, con.defs);
   check('takedown: pulling up in the ring starts one, with an armoured target out in the traffic',
     con.started === 'hit0' && con.target && con.far > 100 && con.marked, JSON.stringify({ started: con.started, target: con.target, far: con.far, marked: con.marked }));
@@ -15742,6 +15750,143 @@ function withTimeout(p, ms) {
   });
   check('getaway: it does not pull over for the cruiser on its tail — it runs, and the cruiser stays behind it',
     gy.on && !gy.yielded && gy.top > 15 && !gy.copAhead && gy.chasing, JSON.stringify(gy));
+
+  // ---------- 55: the light, the filmic curve and the ground set ----------
+  // The graphics layer's own regressions, each one a bug that shipped:
+  //   - the ACES fit's output matrix was applied as `v * OUT`, which in GLSL
+  //     is a ROW-vector multiply — the transpose — and a transposed output
+  //     fit turns every neutral in the frame magenta. Grey in must come out
+  //     grey, measured on the compiled shader itself.
+  //   - the ground set (asphalt/concrete/sand/plaster out of
+  //     tools/gen_textures.py) must load: nine files, placeholder first,
+  //     real image after, on the tier a real GPU gets.
+  //   - the sun's ONE slant: the shadow light, the disc in the sky and the
+  //     sea's specular all answer to gfx.SUN_OFF, or the shadows disagree
+  //     with the glitter and the rays.
+  //   - the daylight palette: the sun is warm WHITE, the fog neutral — a
+  //     pink sky is a bug here, not a look.
+  var tone = null;
+  try {
+    tone = await withTimeout(page.evaluate(function () {
+      // compile the game's own composite fragment shader against a grey quad.
+      // This rig draws with a software GL, which trims the post chain off
+      // its tier on purpose — put it back for the question being asked.
+      GAME.gfx._noSoftwareTrim = true;
+      GAME.gfx.applyQuality();
+      var post = GAME.gfx._post();
+      if (!post || !post.comp) return { err: 'post chain not built' };
+      var frag = post.comp.fragmentShader;
+      var cv = document.createElement('canvas');
+      cv.width = cv.height = 4;
+      var gl = cv.getContext('webgl');
+      function sh(type, src) {
+        var h = gl.createShader(type);
+        gl.shaderSource(h, src); gl.compileShader(h);
+        return gl.getShaderParameter(h, gl.COMPILE_STATUS) ? h : null;
+      }
+      var vs = sh(gl.VERTEX_SHADER, 'attribute vec2 p; varying vec2 vUv; void main(){ vUv = p*0.5+0.5; gl_Position = vec4(p,0.,1.); }');
+      var fs = sh(gl.FRAGMENT_SHADER, 'precision highp float;\n' + frag);
+      if (!vs || !fs) return { err: 'compile failed' };
+      var pr = gl.createProgram();
+      gl.attachShader(pr, vs); gl.attachShader(pr, fs); gl.linkProgram(pr);
+      if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) return { err: 'link failed' };
+      gl.useProgram(pr);
+      var buf = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+      var loc = gl.getAttribLocation(pr, 'p');
+      gl.enableVertexAttribArray(loc);
+      gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+      var tex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 2, 2, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([128,128,128,255, 128,128,128,255, 128,128,128,255, 128,128,128,255]));
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.uniform1i(gl.getUniformLocation(pr, 'tScene'), 0);
+      gl.uniform1i(gl.getUniformLocation(pr, 'tBloomA'), 0);
+      gl.uniform1i(gl.getUniformLocation(pr, 'tBloomB'), 0);
+      ['uRcp','uSunUV'].forEach(function (n) { gl.uniform2f(gl.getUniformLocation(pr, n), 0.5, 0.5); });
+      ['uBloom','uSunI'].forEach(function (n) { gl.uniform1f(gl.getUniformLocation(pr, n), 0); });
+      ['uAA','uVignette'].forEach(function (n) { gl.uniform1f(gl.getUniformLocation(pr, n), 0); });
+      ['uExposure','uFilmic','uAspect'].forEach(function (n) { gl.uniform1f(gl.getUniformLocation(pr, n), 1); });
+      gl.uniform3f(gl.getUniformLocation(pr, 'uSunCol'), 1, 1, 1);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      var px = new Uint8Array(4);
+      gl.readPixels(1, 1, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      return { out: [px[0], px[1], px[2]] };
+    }), 15000);
+  } catch (e) { tone = { err: 'hung' }; }
+  check('gfx: the composite shader compiled and answered (a timeout here means it does not)',
+    !!(tone && tone.out), tone && tone.err ? tone.err : '');
+  if (tone && tone.out) {
+    var chan = tone.out;
+    var spread = Math.max(chan[0], chan[1], chan[2]) - Math.min(chan[0], chan[1], chan[2]);
+    check('gfx: the filmic curve keeps a neutral frame neutral (the transposed ACES fit turned it magenta)',
+      spread <= 6, 'grey 128 in, [' + chan.join(',') + '] out');
+  }
+
+  var texs = null;
+  try {
+    texs = await withTimeout(page.evaluate(function () {
+      // this rig draws with a software GL, which builds the flat tier on
+      // purpose; ask the factories directly, as a real GPU's build does
+      GAME.gfx.flatTier = function () { return false; };
+      GAME.gfx.asphaltMaterial({ vertexColors: true });
+      GAME.gfx.terrainMaterial('concrete', 3.2);
+      GAME.gfx.terrainMaterial('sand', 6);
+      GAME.gfx.facadeNormal();
+      return new Promise(function (res) {
+        setTimeout(function () { res(GAME.gfx._texStats()); }, 4000);
+      });
+    }), 20000);
+  } catch (e) { texs = { err: 'hung' }; }
+  check('gfx: the whole ground set arrived (asphalt, concrete, sand, plaster — nine files)',
+    !!(texs && !texs.err && texs.loaded === 9 && texs.pending === 0),
+    texs && texs.err ? texs.err : JSON.stringify(texs));
+
+  var sun = null;
+  try {
+    sun = await withTimeout(page.evaluate(function () {
+      var ff = function (s) { GAME.test.fastForward(s); };
+      GAME.setTimeMode('day'); ff(0.5);
+      var L = GAME.lights, g = GAME.gfx, off = g.SUN_OFF;
+      var want = Math.sqrt(off.x * off.x + off.y * off.y + off.z * off.z);
+      var got = Math.sqrt(Math.pow(L.dir.position.x - L.dir.target.position.x, 2) +
+                          Math.pow(L.dir.position.y - L.dir.target.position.y, 2) +
+                          Math.pow(L.dir.position.z - L.dir.target.position.z, 2));
+      var sd = g.sunDir();
+      var sunMesh = GAME.city.sun;
+      var w = new THREE.Vector3();
+      if (sunMesh) sunMesh.getWorldPosition(w);
+      var meshDir = sunMesh ? w.clone().sub(GAME.cameraObj.position).normalize() : null;
+      return {
+        sunOn: !!(sunMesh && sunMesh.visible),
+        lightDist: +got.toFixed(1), wantDist: +want.toFixed(1),
+        specAgrees: !!(g._water && g._water().mat && g._water().mat.uniforms.uSunDir.value.distanceTo(sd) < 0.01),
+        meshAgrees: !!(meshDir && meshDir.distanceTo(sd) < 0.05),
+        dirColor: [L.dir.color.r, L.dir.color.g, L.dir.color.b],
+        fogColor: [GAME.scene.fog.color.r, GAME.scene.fog.color.g, GAME.scene.fog.color.b]
+      };
+    }), 15000);
+  } catch (e) { sun = { err: 'hung' }; }
+  check('gfx: the sun disc is up with the day pinned on',
+    !!(sun && !sun.err && sun.sunOn), sun && sun.err ? sun.err : '');
+  if (sun && !sun.err && sun.sunOn) {
+    check('gfx: the shadow light sits at the sun\'s own offset from its target',
+      Math.abs(sun.lightDist - sun.wantDist) < 1,
+      'light ' + sun.lightDist + 'm vs SUN_OFF ' + sun.wantDist + 'm');
+    check('gfx: the sea\'s glitter answers to the same direction the shadows fall from',
+      sun.specAgrees, 'uSunDir vs sunDir');
+    check('gfx: the disc in the sky rides the same slant the shadows fall from',
+      sun.meshAgrees, 'disc direction vs sunDir');
+    check('gfx: daylight is warm white, not pink (the sun itself)',
+      sun.dirColor[0] >= sun.dirColor[1] && sun.dirColor[1] >= sun.dirColor[2] &&
+      sun.dirColor[0] - sun.dirColor[2] <= 0.18,
+      'dir=' + sun.dirColor.map(function (v) { return v.toFixed(2); }).join(','));
+    check('gfx: the day fog is neutral blue, not lavender',
+      sun.fogColor[2] >= sun.fogColor[0] && sun.fogColor[2] - sun.fogColor[1] <= 0.18,
+      'fog=' + sun.fogColor.map(function (v) { return v.toFixed(2); }).join(','));
+  }
 
   // ---------- 14: the broadphase survives a non-finite lookup ----------
   // Math.floor(±Infinity) is ±Infinity and i++ never moves off it, so the

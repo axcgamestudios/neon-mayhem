@@ -63,8 +63,14 @@ var ROOT = path.join(__dirname, '..');
 //     which about 120 MB code and fonts).
 // The newer browser builds the world at the higher peak, so the budget is
 // set from CI's: 200 for the built world, 20 for the held heap.
-var LIMIT = { vbMB: 12, heldMB: 2, texMB: 18, builtOwnMB: 200, heapMB: 20 };
-var MIME = { '.html': 'text/html', '.js': 'text/javascript', '.png': 'image/png', '.json': 'application/json', '.svg': 'image/svg+xml' };
+//
+// The texture set raised texMB twice, deliberately: the ground surfacing
+// (asphalt / concrete / sand, 4K masters shipped at 2048/1024, scaled to
+// 512 on a software GL before upload — see tools/gen_textures.py and
+// gfx.js) added ~13 MB as uploaded where the budget was 18. 40 gives it
+// room without inviting a leak back in.
+var LIMIT = { vbMB: 12, heldMB: 2, texMB: 40, builtOwnMB: 200, heapMB: 20 };
+var MIME = { '.html': 'text/html', '.js': 'text/javascript', '.png': 'image/png', '.jpg': 'image/jpeg', '.json': 'application/json', '.svg': 'image/svg+xml' };
 
 // Peak resident memory (MB) of the renderer processes below rootPid, from
 // /proc — Linux only; null elsewhere, and the check says it was skipped.
