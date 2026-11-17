@@ -84,28 +84,32 @@ GAME.weather = (function () {
   }
 
   // ---------- the spells ----------
+  // Tuned toward the sunshine: this is a holiday town, and the sky spends
+  // better than half of any hour clear. Rain is an event, a cloud lid is a
+  // spell, and a fog bank is a rarity — the grey used to own two days in
+  // three and the town read flat and washed out however the sun was set.
   function nextSpell() {
     var roll = Math.random();
     if (target > 0) {                 // a shower ends: dry for a while,
       target = 0;                     // now and then under the cloud it left
-      cloudTo = roll < 0.35 ? 0.6 + Math.random() * 0.3 : 0;
+      cloudTo = roll < 0.22 ? 0.5 + Math.random() * 0.25 : 0;
       mistTo = 0;
       spellT = 180 + Math.random() * 240;
-    } else if (roll < 0.45) {         // a dry spell ends in rain...
+    } else if (roll < 0.28) {         // a dry spell ends in rain...
       target = 0.55 + Math.random() * 0.45;
       cloudTo = mistTo = 0;
       spellT = 90 + Math.random() * 150;
-    } else if (roll < 0.62) {         // ...or clouds over and stays dry...
-      cloudTo = 0.7 + Math.random() * 0.3;
+    } else if (roll < 0.42) {         // ...or clouds over and stays dry...
+      cloudTo = 0.55 + Math.random() * 0.3;
       mistTo = 0;
       spellT = 120 + Math.random() * 180;
-    } else if (roll < 0.68) {         // ...or a bank of fog rolls in...
+    } else if (roll < 0.47) {         // ...or a bank of fog rolls in...
       mistTo = 1;
       cloudTo = 0;
       spellT = 90 + Math.random() * 90;
     } else {                          // ...or none of it
       cloudTo = mistTo = 0;
-      spellT = 120 + Math.random() * 180;
+      spellT = 150 + Math.random() * 210;
     }
   }
   // a pinned sky: what each setting holds the weather at

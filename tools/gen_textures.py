@@ -184,7 +184,10 @@ def gen_sand():
     alb = 0.68 + (ripple - 0.5) * 0.09 + (grainfield - 0.5) * 0.11 + (grain - 0.5) * 0.09
     alb += (grain > 0.993).astype(np.float64) * 0.20
     alb -= np.clip(band - 0.6, 0, 1) * 0.07
-    albedo = np.dstack([alb, alb * 0.965, alb * 0.88])
+    # golden hour sand, not grey dust: under the blue-ish sky light the old
+    # near-neutral beige read green-grey on screen; hold more gold in the
+    # albedo so the beach answers the sun instead of the sky
+    albedo = np.dstack([alb, alb * 0.935, alb * 0.79])
 
     save_arr(albedo, 'sand.jpg', SHIP_ALBEDO, 86)
     save_arr(height_to_normal(h, strength=0.9), 'sand_n.jpg', SHIP_AUX, 92)

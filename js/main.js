@@ -316,7 +316,7 @@
   // not a midpoint, because a midpoint of night and day is exactly the muddy
   // grey the sunset was before it had a colour of its own.
   var TOD_NIGHT = { fog: 0x0e1526, near: 95, hemi: 0x34466a, ground: 0x26202a, hemiI: 0.55, dir: 0xb9c8e8, dirI: 0.42, amb: 0x1e2838, ambI: 0.5, clear: 0x060a14 };
-  var TOD_DAY = { fog: 0xc2d2e2, near: 150, hemi: 0xa8c8ee, ground: 0x9a8f78, hemiI: 1.0, dir: 0xfff1d8, dirI: 1.35, amb: 0x647a92, ambI: 0.32, clear: 0x86bcee };
+  var TOD_DAY = { fog: 0xa9c9e8, near: 200, hemi: 0x9cc8f0, ground: 0x9a8f78, hemiI: 1.0, dir: 0xfff1d8, dirI: 1.35, amb: 0x647a92, ambI: 0.32, clear: 0x86bcee };
   // golden hour: an orange sun low over the sea, warm haze in the air, the
   // sky's own dome doing the violet-to-amber band (city.js buildSky)
   var TOD_DUSK = { fog: 0xd89868, near: 120, hemi: 0x8a7898, ground: 0x6a5040, hemiI: 0.62, dir: 0xff9448, dirI: 1.05, amb: 0x585064, ambI: 0.4, clear: 0x8a6a70 };
@@ -344,7 +344,7 @@
     if (wet > 0) scene.fog.color.lerp(lerpHex(RAIN_NIGHT, RAIN_DAY, df, _cR), wet * 0.7);
     if (mist > 0) scene.fog.color.lerp(lerpHex(MIST_NIGHT, MIST_DAY, df, _cR), mist * 0.9);
     scene.fog.near = U.lerp(TOD_NIGHT.near, TOD_DAY.near, df) * (1 - 0.55 * wet) * (1 - 0.2 * cloud);
-    scene.fog.far = (farBase + df * 90) * QUALITY[GAME.quality].fog * (1 - 0.4 * wet) * (1 - 0.12 * cloud);   // GFX draws it in
+    scene.fog.far = (farBase + df * 150) * QUALITY[GAME.quality].fog * (1 - 0.4 * wet) * (1 - 0.12 * cloud);   // GFX draws it in
     if (mist > 0) {
       scene.fog.near = U.lerp(scene.fog.near, MIST_NEAR, mist);
       scene.fog.far = U.lerp(scene.fog.far, MIST_FAR, mist);
@@ -391,7 +391,7 @@
     // the fog bank all the way up (city.js buildSky)
     var veil = GAME.city.skyVeil;
     if (veil) {
-      var cover = Math.max(mist, cloud * 0.85);
+      var cover = Math.max(mist, cloud * 0.72);
       veil.material.color.copy(scene.fog.color);
       veil.material.opacity = cover;
       veil.visible = cover > 0.01;

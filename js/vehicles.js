@@ -130,32 +130,32 @@ GAME.fx = (function () {
 // these numbers once did — a few fender-benders had a car smoking and a few
 // more had it on fire, before the first proper chase. Aircraft are as they were.
 var VEHICLES = {
-  sports: { label: 'Vulture GT', maxSpeed: 40, accel: 17, grip: 3.6, turn: 2.7, hp: 210, l: 4.3, w: 1.95, cabinH: 0.5, bodyH: 0.5, colors: [0xff2f7a, 0x38e8ff, 0xffe14f, 0xffffff, 0xb040ff] },
-  sedan: { label: 'Cadenza', maxSpeed: 29, accel: 10, grip: 5.2, turn: 2.1, hp: 245, l: 4.5, w: 1.9, cabinH: 0.62, bodyH: 0.55, colors: [0x9fb4c8, 0xc0a0d8, 0x88c8a8, 0xd8d0c0, 0x8090b0] },
-  taxi: { label: 'Taxi', maxSpeed: 30, accel: 10.5, grip: 5.2, turn: 2.2, hp: 245, l: 4.5, w: 1.9, cabinH: 0.62, bodyH: 0.55, colors: [0xf0c020], cab: true },
+  sports: { label: 'Vulture GT', maxSpeed: 40, accel: 17, grip: 4.3, turn: 2.35, hp: 210, l: 4.3, w: 1.95, cabinH: 0.5, bodyH: 0.5, colors: [0xff2f7a, 0x38e8ff, 0xffe14f, 0xffffff, 0xb040ff] },
+  sedan: { label: 'Cadenza', maxSpeed: 29, accel: 10, grip: 5.2, turn: 1.95, hp: 245, l: 4.5, w: 1.9, cabinH: 0.62, bodyH: 0.55, colors: [0x9fb4c8, 0xc0a0d8, 0x88c8a8, 0xd8d0c0, 0x8090b0] },
+  taxi: { label: 'Taxi', maxSpeed: 30, accel: 10.5, grip: 5.2, turn: 2.0, hp: 245, l: 4.5, w: 1.9, cabinH: 0.62, bodyH: 0.55, colors: [0xf0c020], cab: true },
   // VERDE CABS' own (shops.js): cab yellow in black tiger
   // stripes. A little quicker, surer and tougher than the fleet's, never in
   // traffic — it is in the middle bay of the firm's garage once the firm is
   // yours, and it takes fares like any cab
-  tiger: { label: 'Tiger Cab', maxSpeed: 35, accel: 13, grip: 5.6, turn: 2.4, hp: 300, l: 4.5, w: 1.9, cabinH: 0.62, bodyH: 0.55, colors: [0xf2c21a], cab: true },
+  tiger: { label: 'Tiger Cab', maxSpeed: 35, accel: 13, grip: 5.6, turn: 2.15, hp: 300, l: 4.5, w: 1.9, cabinH: 0.62, bodyH: 0.55, colors: [0xf2c21a], cab: true },
   van: { label: 'Cargo Van', maxSpeed: 23, accel: 7, grip: 6, turn: 1.7, hp: 360, l: 5.1, w: 2.1, cabinH: 1.0, bodyH: 0.9, colors: [0x9a8a78, 0x7888a0, 0xa87868] },
-  police: { label: 'Cruiser', maxSpeed: 35, accel: 13.5, grip: 5.0, turn: 2.4, hp: 280, l: 4.6, w: 1.95, cabinH: 0.6, bodyH: 0.55, colors: [0xe8ecf2] },
+  police: { label: 'Cruiser', maxSpeed: 35, accel: 13.5, grip: 5.0, turn: 2.15, hp: 280, l: 4.6, w: 1.95, cabinH: 0.6, bodyH: 0.55, colors: [0xe8ecf2] },
   ambulance: { label: 'Ambulance', maxSpeed: 27, accel: 8.5, grip: 5.6, turn: 1.8, hp: 335, l: 5.3, w: 2.15, cabinH: 1.15, bodyH: 1.0, colors: [0xf2f2f6] },
-  motorcycle: { label: 'Neon Streak', maxSpeed: 46, accel: 22, grip: 2.9, turn: 3.1, hp: 180, l: 2.2, w: 0.7, cabinH: 0.0, bodyH: 0.45, colors: [0xff2f7a, 0x38e8ff, 0x20242e, 0xffe14f], bike: true },
+  motorcycle: { label: 'Neon Streak', maxSpeed: 46, accel: 22, grip: 3.4, turn: 2.6, hp: 180, l: 2.2, w: 0.7, cabinH: 0.0, bodyH: 0.45, colors: [0xff2f7a, 0x38e8ff, 0x20242e, 0xffe14f], bike: true },
   // showroom exclusive: never in traffic, never parked on a verge — the only
   // way onto one is to pay GRAN ROSA MOTORS for it
-  superbike: { label: 'Cormorán GT', maxSpeed: 55, accel: 27, grip: 3.5, turn: 3.3, hp: 210, l: 2.3, w: 0.72, cabinH: 0.0, bodyH: 0.5, colors: [0x101018], bike: true, trim: 0x38e8ff },
+  superbike: { label: 'Cormorán GT', maxSpeed: 55, accel: 27, grip: 4.0, turn: 2.75, hp: 210, l: 2.3, w: 0.72, cabinH: 0.0, bodyH: 0.5, colors: [0x101018], bike: true, trim: 0x38e8ff },
   helicopter: { label: 'Pelicano', maxSpeed: 34, accel: 12, grip: 4, turn: 2, hp: 130, l: 8.5, w: 2.4, cabinH: 1.4, bodyH: 1.5, colors: [0x2a2e3a, 0xf0f0f0, 0xff2f7a], heli: true },
   // the big bird: guns and rockets — granted by finishing everything, or
   // bought over the showroom counter by anyone with the money
   gunship: { label: 'Talon', maxSpeed: 42, accel: 12, grip: 4, turn: 2, hp: 420, l: 8.5, w: 2.4, cabinH: 1.4, bodyH: 1.5, colors: [0x3a4632, 0x2c3626, 0x46523a], heli: true, gunship: true },
-  monster: { label: 'Sledgehammer', maxSpeed: 33, accel: 15, grip: 5.8, turn: 2.3, hp: 590, l: 5.2, w: 2.6, cabinH: 1.1, bodyH: 1.2, colors: [0x7a3ad8, 0x38e8ff, 0xff2f7a], monster: true },
+  monster: { label: 'Sledgehammer', maxSpeed: 33, accel: 15, grip: 5.8, turn: 2.05, hp: 590, l: 5.2, w: 2.6, cabinH: 1.1, bodyH: 1.2, colors: [0x7a3ad8, 0x38e8ff, 0xff2f7a], monster: true },
   // wheelH is the real gear length: the mesh reaches 0.5 below its origin, and
   // at 1.1 the whole plane taxied and parked six tenths of a metre in the air
   airplane: { label: 'Skywhistle', maxSpeed: 72, accel: 20, grip: 4, turn: 2, hp: 150, l: 11, w: 3, cabinH: 1.4, bodyH: 1.4, colors: [0xf0f0f4, 0xff2f7a, 0x38e8ff], plane: true, stall: 17, wheelH: 0.5 },
   // Isla Verde's own stock. The buggy is for the cove, the pickup for the
   // villa lanes, the limo for the resort — and the truck sells ice cream.
-  buggy: { label: 'Dune Hopper', maxSpeed: 33, accel: 15, grip: 4.2, turn: 3.0, hp: 155, l: 3.4, w: 1.85, cabinH: 0.0, bodyH: 0.42, colors: [0xffb03a, 0x6ae8a0, 0xff6a8a, 0xf0f0f4], buggy: true },
+  buggy: { label: 'Dune Hopper', maxSpeed: 33, accel: 15, grip: 4.2, turn: 2.55, hp: 155, l: 3.4, w: 1.85, cabinH: 0.0, bodyH: 0.42, colors: [0xffb03a, 0x6ae8a0, 0xff6a8a, 0xf0f0f4], buggy: true },
   pickup: { label: 'Sierra 4x4', maxSpeed: 30, accel: 10, grip: 6.0, turn: 2.0, hp: 335, l: 5.0, w: 2.05, cabinH: 0.78, bodyH: 0.78, colors: [0x7a8a68, 0xa8683a, 0x486888, 0xd0c0a0], pickup: true },
   limo: { label: 'Vista Royale', maxSpeed: 31, accel: 8.5, grip: 5.4, turn: 1.5, hp: 295, l: 7.2, w: 2.0, cabinH: 0.62, bodyH: 0.55, colors: [0x14141a, 0xf0ece0] },
   icecream: { label: 'Sunny Scoops', maxSpeed: 21, accel: 6.2, grip: 5.8, turn: 1.7, hp: 280, l: 5.2, w: 2.2, cabinH: 0, bodyH: 0.55, colors: [0xfdf6ec], icecream: true },
@@ -176,7 +176,7 @@ var VEHICLES = {
   // your aim and a cannon on LMB. Take one off them and it is yours.
   // a toy: the MINI MAYHEM RACE's buggy (rc.js), a fifth the size of the real
   // thing, driven from the controller at the stadium gate
-  rc: { label: 'Mini Mayhem', maxSpeed: 15, accel: 20, grip: 6.5, turn: 3.6, hp: 45, l: 0.72, w: 0.42, cabinH: 0, bodyH: 0.12, colors: [0x38e8ff], rc: true },
+  rc: { label: 'Mini Mayhem', maxSpeed: 15, accel: 20, grip: 6.5, turn: 3.0, hp: 45, l: 0.72, w: 0.42, cabinH: 0, bodyH: 0.12, colors: [0x38e8ff], rc: true },
   tank: { label: 'Mastodon', maxSpeed: 17, accel: 7, grip: 7.5, turn: 1.45, hp: 4200, l: 6.6, w: 3.3, cabinH: 0, bodyH: 1.0, colors: [0x4a5a36], tank: true, army: true },
   armytruck: { label: 'Quartermaster', maxSpeed: 26, accel: 8, grip: 5.8, turn: 1.6, hp: 650, l: 6.4, w: 2.5, cabinH: 0.9, bodyH: 0.9, colors: [0x55603e], army: true },
   policeboat: { label: 'Harbour Patrol', maxSpeed: 32, accel: 12.5, grip: 1.8, turn: 1.6, hp: 340, l: 6.6, w: 2.2, cabinH: 0, bodyH: 0.7, colors: [0xf2f4f8], boat: true, police: true }
@@ -1073,23 +1073,24 @@ GAME.vehicles = (function () {
       if (Math.abs(car.speed) < 0.06 && thr === 0) car.speed = 0;
     }
 
-    var steerFactor = Math.min(1, Math.abs(car.speed) / 7) / (1 + Math.abs(car.speed) * 0.022);
+    var steerFactor = Math.min(1, Math.abs(car.speed) / 7) / (1 + Math.abs(car.speed) * 0.045);
     var dir = car.speed < -0.5 ? -1 : 1;
 
     if (!flying) {
-      // ---- the drift, rebuilt ----
-      // The old model injected lateral slip as `steer * speed * 0.16` (x2.4
-      // on the handbrake) while the handbrake cut the grip that decayed it
-      // to 0.22x: the two multiplied into an equilibrium slip ten times what
-      // any tire can hold, and a handbrake tap at speed threw the car
-      // sideways into the nearest wall. The rebuild keeps the arcade feel
-      // but makes the tires the limit:
-      //   - slip is GENERATED by the same yaw the driver is asking for
-      //     (steer x turn x steerFactor), so it can't out-run the corner;
-      //   - the slip ANGLE is clamped to what rubber allows (~11deg
-      //     gripping, ~26deg with the tail hanging out);
-      //   - the handbrake loosens the tail (slow decay + extra yaw
-      //     authority while sliding) instead of zeroing the grip.
+      // ---- the drift, rebuilt again ----
+      // The first rebuild made the tires the limit but left the car
+      // GENERATING slip like a kart on wet clay: a plain full-lock corner at
+      // 27 m/s settled at 23 degrees of slip, smoke pouring, the body
+      // crabbing sideways through every bend it ever took. On a dry road a
+      // tire holds better than that by an order of magnitude, and the drift
+      // the player ASKS for (handbrake, a boot of throttle, rain, sand) is
+      // the one it should get:
+      //   - slip generation is scaled to what a road tire corners at
+      //     (~4-8 degrees at full lock, dry);
+      //   - the handbrake, the power slide, wet weather and sand are what
+      //     hang the tail out, and they still can, hard;
+      //   - the yaw authority trade stays: past the slip peak the fronts
+      //     buy less rotation, the loose tail gives some back.
       var grip = spec.grip * surf * (car.spiked ? 0.5 : 1) * GAME.weather.grip();   // wet roads
       var spd = Math.abs(car.speed);
       var slipAng = Math.atan2(car.lat, Math.max(4, spd));
@@ -1107,31 +1108,34 @@ GAME.vehicles = (function () {
       car.heading += c.steer * spec.turn * steerFactor * dir * yawAuth * dt;
       // handbrake: the rear axle drags, and the sliding tires scrub speed
       if (c.handbrake) car.speed *= Math.exp(-(0.8 + 0.5 * Math.abs(slipAng)) * dt);
-      // power slide: off the handbrake but still sideways with the throttle
+      // power slide: off the handbrake but already sideways with the throttle
       // floored, the rear wheels keep the drift alive — the sustain grows
       // with how far out the tail already is, so an ordinary foot-down
       // corner (a few degrees of slip) barely feels it and a held drift
-      // (25deg+) keeps its slide
+      // (20deg+) keeps its slide
       var aSlip = Math.abs(slipAng);
-      var power = !c.handbrake && c.throttle > 0.85 && spd > 6 && aSlip > 0.25;
-      // slip generation, in units of lateral speed per second
-      var gen = c.steer * spec.turn * steerFactor * car.speed * 1.15;
+      var power = !c.handbrake && c.throttle > 0.85 && spd > 6 && aSlip > 0.20;
+      // slip generation, in units of lateral speed per second — 0.42 is a
+      // road tire's honest cornering stiffness in this parametrization:
+      // full lock at 27 m/s sits at ~7 degrees, not 23
+      var gen = c.steer * spec.turn * steerFactor * car.speed * 0.42;
       if (power) gen += Math.sign(car.lat || c.steer) * Math.abs(gen) *
-        (0.15 + 0.35 * U.clamp((aSlip - 0.25) / 0.2, 0, 1));
+        (0.15 + 0.35 * U.clamp((aSlip - 0.20) / 0.22, 0, 1));
       // decay: the tires pull the car back onto its heading; the handbrake
       // holds the tail loose while it is on
       var hold = c.handbrake ? grip * 0.16 : grip;
       car.lat = (car.lat + gen * dt) * Math.exp(-hold * dt);
-      // the tire wall: ~23deg in ordinary driving (a hard corner's slip
-      // sits under it, so wet roads still slide further than dry — the
-      // tires' own balance decides, not the ceiling), ~26deg once the tail
-      // is properly hung out
-      var maxSlipAng = (c.handbrake || aSlip > 0.40) ? 0.46 : 0.40;
+      // the tire wall: a gripping tire lets go somewhere near 19deg, and
+      // once the tail is properly hung out (handbrake, a held drift) the
+      // same rubber slides at 26deg — wet roads still slide further than
+      // dry, the tires' own balance decides, not the ceiling
+      var maxSlipAng = (c.handbrake || aSlip > 0.40) ? 0.46 : 0.34;
       var maxLat = Math.tan(maxSlipAng) * Math.max(4, spd);
       if (car.lat > maxLat) car.lat = maxLat;
       else if (car.lat < -maxLat) car.lat = -maxLat;
-      // tire smoke off the rear wheels while it slides
-      if (!spec.bike && !car.dead && spd > 7 && Math.abs(slipAng) > 0.22) {
+      // tire smoke off the rear wheels while it truly slides — a hard dry
+      // corner stays clean; a drift smokes
+      if (!spec.bike && !car.dead && spd > 7 && Math.abs(slipAng) > 0.28) {
         car.smokeT = (car.smokeT || 0) - dt;
         if (car.smokeT <= 0) {
           car.smokeT = 0.05;

@@ -1975,7 +1975,7 @@ GAME.city = (function () {
       [0, '#2e2430'], [0.38, '#302430'], [0.48, '#201b2e'], [0.58, '#0e1220'], [0.78, '#060b16'], [1, '#04070e']
     ]);
     var dayTex = skyGradient([
-      [0, '#c0c4c2'], [0.46, '#d8d8d0'], [0.52, '#bcd4f0'], [0.56, '#8ec2f6'], [0.62, '#56a4f2'], [0.75, '#2e92ea'], [1, '#2286e0']
+      [0, '#8f9aa4'], [0.45, '#b9c2c6'], [0.50, '#d3e0ea'], [0.53, '#a8ccf0'], [0.58, '#68b0f2'], [0.66, '#3394ec'], [0.80, '#1f82e4'], [1, '#1a76da']
     ]);
     var duskTex = skyGradient([
       [0, '#c8825a'], [0.22, '#a06a5e'], [0.38, '#705a72'], [0.55, '#44507a'], [0.74, '#283a66'], [1, '#1a2c58']
@@ -2093,7 +2093,7 @@ GAME.city = (function () {
       // the dome pays for it up front: blue boosted, red held back. Under
       // weather the boost folds away toward the flat overcast grey.
       city.skyDay.material.color.setRGB(
-        U.lerp(0.92, 0.85, wet), U.lerp(1.0, 0.87, wet), U.lerp(1.16, 0.9, wet));
+        U.lerp(0.97, 0.85, wet), U.lerp(1.0, 0.88, wet), U.lerp(1.06, 0.9, wet));
     }
     // the sunset dome: its own bell around df .72 (main.js duskAmt, the same
     // curve the lights ride), squeezed out by weather like everything else

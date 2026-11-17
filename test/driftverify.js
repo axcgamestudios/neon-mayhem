@@ -1,6 +1,10 @@
 // Drift model verification — the bug it locks out: a handbrake tap at speed
 // used to blow the lateral slip to 10x what tires hold and throw the car
-// sideways into a wall (lat 15.4 m/s within 0.2s, measured).
+// sideways into a wall (lat 15.4 m/s within 0.2s, measured). The second
+// rebuild it guards: a plain full-lock corner on dry asphalt now GRIPS
+// (slip settles under ~10 degrees — it used to sit at 23, smoke pouring,
+// every bend a crab-walk), and the drift you ASK for (handbrake, a boot of
+// throttle) still hangs the tail out.
 //   node test/driftverify.js
 var http = require('http');
 var fs = require('fs');
@@ -94,12 +98,15 @@ function check(name, ok, detail) {
   check('heading change < 2.2 rad in 1s', hChange < 2.2, 'dHeading=' + hChange.toFixed(2));
   check('car still rolling after 1s handbrake', Math.abs(R.drift.speed) > 6, 'speed=' + R.drift.speed);
   check('released slip decays fast (lat < 2.5 in 0.4s)', Math.abs(R.counter.lat) < 2.5, 'lat=' + R.counter.lat);
-  // normal cornering sanity: lat within 25%-200% of the old equilibrium
-  var oldEq = Math.abs(R.corner.samples[0].speed) * 0.16 * 8 / 3.6; // sports grip
-  var cLat = 0;
-  for (i = 0; i < R.corner.samples.length; i++) cLat = Math.max(cLat, Math.abs(R.corner.samples[i].lat));
-  check('grip cornering in old ballpark', cLat > oldEq * 0.25 && cLat < oldEq * 2.2,
-    'maxLat=' + cLat + ' oldEq~' + oldEq.toFixed(1));
+  // normal cornering on dry asphalt: a full-lock corner GRIPS now. The slip
+  // angle settles under ~10 degrees — the old model sat at 23 with the tires
+  // smoking through every bend — and the car still turns a proper arc.
+  var cLat = 0, cSlip = 0;
+  for (i = 0; i < R.corner.samples.length; i++) {
+    cLat = Math.max(cLat, Math.abs(R.corner.samples[i].lat));
+    cSlip = Math.max(cSlip, Math.abs(R.corner.samples[i].slip));
+  }
+  check('grip corner holds the road (slip < 0.20 rad)', cSlip < 0.20, 'maxSlip=' + cSlip.toFixed(3));
   var hCorner = Math.abs(R.corner.heading - R.corner.samples[0].h);
   check('grip corner turns (dHeading > 0.5)', hCorner > 0.5, 'dHeading=' + hCorner.toFixed(2));
   check('grip corner lat < 14 m/s (no blow-up)', cLat < 14, 'maxLat=' + cLat);

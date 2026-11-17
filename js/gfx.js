@@ -673,13 +673,13 @@
     post.camFS = new THREE.Camera();
     post.quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), null);
     post.sceneFS.add(post.quad);
-    post.bright = fsMaterial(BRIGHT_FRAG, { tIn: { value: null }, uThresh: { value: 0.71 } });
+    post.bright = fsMaterial(BRIGHT_FRAG, { tIn: { value: null }, uThresh: { value: 0.80 } });
     post.blur = fsMaterial(BLUR_FRAG, { tIn: { value: null }, uDir: { value: new THREE.Vector2() } });
     post.comp = fsMaterial(COMP_FRAG, {
       tScene: { value: null }, tBloomA: { value: null }, tBloomB: { value: null },
       uRcp: { value: new THREE.Vector2(1 / w, 1 / h) },
-      uBloom: { value: 0.58 }, uExposure: { value: 1.08 },
-      uVignette: { value: 0.26 }, uAA: { value: 1 }, uFilmic: { value: 0.85 },
+      uBloom: { value: 0.34 }, uExposure: { value: 1.02 },
+      uVignette: { value: 0.22 }, uAA: { value: 1 }, uFilmic: { value: 0.62 },
       uSunUV: { value: new THREE.Vector2(0.5, 0.5) }, uSunI: { value: 0 },
       uSunCol: { value: new THREE.Color(1, 0.88, 0.7) }, uAspect: { value: w / h }
     });

@@ -1352,6 +1352,13 @@ GAME.playerSiren = function () {
   return P.inCar && P.car && P.car.isPolice && P.car.sirenOn && !P.car.dead ? P.car : null;
 };
 
+// the player's own wheel: keyboard keys are either fully on or fully off,
+// and steering that snaps to full lock in one frame reads as the car
+// pivoting on a rail — "gira muy raro", said the man. The wheel winds on
+// lock at 5.5/s and unwinds at 9/s, so a tap is a feather and a hold is a
+// real corner. Touch and pad analog values ride the same ramp (a touch
+// nudge is quick anyway) and nothing here touches the AI's controls.
+var steerRamp = 0;
 function updateDriving(dt) {
   var P = GAME.player, inp = GAME.input, T = inp.touch;
   var car = P.car;
@@ -1408,7 +1415,18 @@ function updateDriving(dt) {
     }
     if (GAME.pad.on) { th += GAME.pad.rt - GAME.pad.lt; st -= GAME.pad.lx; }   // triggers and stick
     c.throttle = U.clamp(th, -1, 1);
-    c.steer = U.clamp(st, -1, 1);
+    if (car.spec.boat) {
+      // a helm answers now — the rudder is the flow of water past it, and
+      // the boat's own turning already ramps with way on; winding a rate
+      // limiter on top only made the wheel feel disconnected from the sea
+      c.steer = U.clamp(st, -1, 1);
+      steerRamp = c.steer;
+    } else {
+      var stTarget = U.clamp(st, -1, 1);
+      var sRate = Math.abs(stTarget) > Math.abs(steerRamp) ? 5.5 : 9;
+      steerRamp += U.clamp(stTarget - steerRamp, -sRate * dt, sRate * dt);
+      c.steer = steerRamp;
+    }
     // and the wheel pulls, under way, with a few drinks in you
     var dlc = drunkLevel();
     if (dlc > 0 && Math.abs(car.speed) > 2) c.steer = U.clamp(c.steer + (Math.sin(GAME.time * 0.8) * 0.3 + Math.sin(GAME.time * 2.1) * 0.12) * dlc, -1, 1);
