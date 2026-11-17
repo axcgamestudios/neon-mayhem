@@ -640,7 +640,7 @@ GAME.city = (function () {
     // lit at night: this building's own share, decided window by window
     '    float nightLit = step( winHash( floor( vUv * uCells ) + floor( vWinLight.z + 0.5 ) * vec2( 7.0, 3.0 ) ), vWinLight.x );',
     '    vec3 warmth = mix( vec3( 0.82, 0.92, 1.14 ), vec3( 1.16, 0.93, 0.68 ), vWinLight.y );',
-    '    glowMask = mix( glowMask, nightLit * warmth, nightMix );',
+    '    glowMask = mix( glowMask, nightLit * warmth * 1.55, nightMix );',
     // A window lit in the DAY pattern but dark tonight is still painted bright
     // on the map, and read as a faint pastel square after dark rather than as
     // glass; take it down to the glass it is while the night holds.
@@ -750,6 +750,24 @@ GAME.city = (function () {
     return (glowTexCache[color] = releaseAfterUpload(new THREE.CanvasTexture(cv)));
   }
   city.glowTexture = radialGlowTexture;
+  // a street lamp's pool: a hot sodium core that falls off wide and soft —
+  // the single-stop radial read as a decal slapped on the road, hard at the
+  // edge and empty at the middle, nothing like light standing on asphalt
+  var lampPoolTex = null;
+  function lampPoolTexture() {
+    if (lampPoolTex) return lampPoolTex;
+    var cv = document.createElement('canvas');
+    cv.width = cv.height = 128;
+    var g = cv.getContext('2d');
+    var gr = g.createRadialGradient(64, 64, 2, 64, 64, 63);
+    gr.addColorStop(0, 'rgba(255,214,150,0.62)');
+    gr.addColorStop(0.28, 'rgba(255,178,100,0.38)');
+    gr.addColorStop(0.62, 'rgba(255,150,80,0.16)');
+    gr.addColorStop(1, 'rgba(255,140,70,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+    lampPoolTex = releaseAfterUpload(new THREE.CanvasTexture(cv));
+    return lampPoolTex;
+  }
 
   // ---------- kinetic props ----------
   // Single live meshes for the handful of things that turn, blink or breathe.
@@ -1221,7 +1239,7 @@ GAME.city = (function () {
       var h = U.randRange(rng, 32, 88) * (1 - U.dist(cx, cz, -100, -100) / 900);
       var x = cx + lx * 19, z = cz + lz * 19;
       if (tryBuilding(batches.blkDowntown, x, z, w, dep, h, facadeShade('downtown', shades, x, z), 32)) {
-        batches.blkDowntown.addBox(x, 1.5, z, w + 4, 3, dep + 4, 0, 0x3a3448, 0);
+        batches.blkDowntown.addBox(x, 1.5, z, w + 4, 3, dep + 4, 0, 0x3a3448, -1);
         if (rng() < 0.28) {
           var slot = U.randInt(rng, 0, 17);
           addSign(batches.signs, slot, x, h + 3, z, rng() * Math.PI * 2, 22, 5);
@@ -1246,8 +1264,8 @@ GAME.city = (function () {
       var col = facadeShade('strip', pastel, x, z);
       if (tryBuilding(batches.blkStrip, x, z, w, dep, h, col, 24)) {
         // stepped art-deco top
-        batches.blkStrip.addBox(x, h + 1.5, z, w * 0.6, 3, dep * 0.6, 0, col, 0);
-        batches.blkStrip.addBox(x, h + 3.7, z, w * 0.3, 1.6, dep * 0.3, 0, 0xfff0f8, 0);
+        batches.blkStrip.addBox(x, h + 1.5, z, w * 0.6, 3, dep * 0.6, 0, col, -1);
+        batches.blkStrip.addBox(x, h + 3.7, z, w * 0.3, 1.6, dep * 0.3, 0, 0xfff0f8, -1);
         var slot = U.randInt(rng, 0, 17);
         var face = frontRow ? Math.PI / 2 : (rng() < 0.5 ? Math.PI / 2 : -Math.PI / 2);
         var sx = x + (face > 0 ? w / 2 + 0.3 : -w / 2 - 0.3);
@@ -1275,8 +1293,8 @@ GAME.city = (function () {
       var col = facadeShade('strip', pastel, x, z, irng);
       batches.blkStrip.addBox(x, h / 2, z, w, h, dep, 0, col, 24, true);
       addSolid(x, z, w, dep, h);
-      batches.blkStrip.addBox(x, h + 1.5, z, w * 0.6, 3, dep * 0.6, 0, col, 0);
-      batches.blkStrip.addBox(x, h + 3.7, z, w * 0.3, 1.6, dep * 0.3, 0, 0xfff0f8, 0);
+      batches.blkStrip.addBox(x, h + 1.5, z, w * 0.6, 3, dep * 0.6, 0, col, -1);
+      batches.blkStrip.addBox(x, h + 3.7, z, w * 0.3, 1.6, dep * 0.3, 0, 0xfff0f8, -1);
       addSign(batches.signs, U.randInt(irng, 0, 17), x + w / 2 + 0.3, h * 0.75, z, Math.PI / 2, Math.min(20, dep * 0.9), 4.5);
     }
   }
@@ -1335,18 +1353,18 @@ GAME.city = (function () {
       if (H.isla) return;
       batches.generic.addBox(H.x, 9, H.z - 12, 60, 18, 28, 0, 0xd8e8f0, 28);
       addSolid(H.x, H.z - 12, 60, 28, 18);
-      batches.generic.addBox(H.x, 1.5, H.z - 12, 60.6, 3, 28.6, 0, 0xc05a6a, 0);      // base band
+      batches.generic.addBox(H.x, 1.5, H.z - 12, 60.6, 3, 28.6, 0, 0xc05a6a, -1);      // base band
       // cornice as a RIM, not a slab — a slab across the roof re-buries
       // anyone standing on the solid beneath it (the observatory lesson).
       // The short strips BUTT against the long ones instead of running the
       // full depth — overlapped corners are two coplanar faces flickering
       [[0, -14.15, 60.6, 0.9], [0, 14.15, 60.6, 0.9], [-30.15, 0, 0.9, 27.4], [30.15, 0, 0.9, 27.4]].forEach(function (c) {
-        batches.generic.addBox(H.x + c[0], 18.35, H.z - 12 + c[1], c[2], 0.7, c[3], 0, 0xb8ccd8, 0);
+        batches.generic.addBox(H.x + c[0], 18.35, H.z - 12 + c[1], c[2], 0.7, c[3], 0, 0xb8ccd8, -1);
       });
-      batches.generic.addBox(H.x - 22, 20.4, H.z - 12, 10, 4, 10, 0, 0xc8dce8, 0);    // plant room
+      batches.generic.addBox(H.x - 22, 20.4, H.z - 12, 10, 4, 10, 0, 0xc8dce8, -1);    // plant room
       // the cross tower: an ivory fin on the front corner, taller than the
       // roof, wearing a red cross on three faces — the thing you steer by
-      batches.generic.addBox(H.x + 26, 13, H.z + 1, 4, 26, 4, 0, 0xe6f0f6, 0);
+      batches.generic.addBox(H.x + 26, 13, H.z + 1, 4, 26, 4, 0, 0xe6f0f6, 28);
       addSolid(H.x + 26, H.z + 1, 4, 4, 26);
       // an equal-armed PLUS, both bars centred on one point — the old long
       // vertical with its crossbar riding high read as a church steeple,
@@ -1368,10 +1386,10 @@ GAME.city = (function () {
       });
       // the EMERGENCY canopy: drive-through height, red glow underneath,
       // the word itself on the fascia, and a red wash on the bay beneath
-      batches.generic.addBox(H.x, 5.3, H.z + 5.4, 22, 0.8, 7, 0, 0xe8f0f4, 0);
+      batches.generic.addBox(H.x, 5.3, H.z + 5.4, 22, 0.8, 7, 0, 0xe8f0f4, -1);
       batches.marks.addBox(H.x, 4.82, H.z + 5.4, 21, 0.18, 6.2, 0, 0xe23a4a, 0);
       [[-9.5, 3.2], [9.5, 3.2], [-9.5, 7.6], [9.5, 7.6]].forEach(function (cc) {
-        batches.generic.addBox(H.x + cc[0], 2.45, H.z + cc[1], 0.7, 4.9, 0.7, 0, 0xe8f0f4, 0);
+        batches.generic.addBox(H.x + cc[0], 2.45, H.z + cc[1], 0.7, 4.9, 0.7, 0, 0xe8f0f4, -1);
       });
       addSign(batches.signs, 43, H.x, 5.35, H.z + 9.05, 0, 16, 1.7);
       pools.addGroundQuad(H.x, 0.1, H.z + 5.4, 24, 10, 0, 0x8a1622);
@@ -1941,19 +1959,28 @@ GAME.city = (function () {
     }
 
   function buildSky(scene) {
-    // a physical sky, both ends of the clock: the day a clear deep-blue
-    // zenith into pale horizon haze, the night near-black blue with a faint
-    // lighter band where the city's own light catches the air. The gradient
-    // runs nadir (stop 0) to zenith (stop 1); the stops under the horizon are
-    // kept DIM on purpose — that band is what the sea's far edge shows, and
-    // anything bright there blooms and washes pink across the whole sky
+    // a physical sky, three faces of the clock. The DAY is a real blue —
+    // saturated at the zenith into a warm pale haze at the horizon (the
+    // washed-out grey-blue it was read dead at street level). The NIGHT
+    // keeps its near-black blue but breathes a little warm light pollution
+    // into the horizon band — a city of this size glows back at its own
+    // sky. And DUSK is its own dome, an amber-to-violet sunset that peaks
+    // around df 0.72 (main.js duskAmt), because a blend of night and day
+    // was exactly the muddy grey a sunset never is.
+    // The gradient runs nadir (stop 0) to zenith (stop 1); the stops under
+    // the horizon are kept DIM on purpose — that band is what the sea's far
+    // edge shows, and anything bright there blooms and washes pink across
+    // the whole sky
     var nightTex = skyGradient([
-      [0, '#0a1220'], [0.5, '#0b1526'], [0.78, '#081020'], [1, '#04070e']
+      [0, '#2e2430'], [0.38, '#302430'], [0.48, '#201b2e'], [0.58, '#0e1220'], [0.78, '#060b16'], [1, '#04070e']
     ]);
     var dayTex = skyGradient([
-      [0, '#c8d4de'], [0.5, '#c2d6ea'], [0.62, '#9cc2e6'], [0.78, '#6a9fd8'], [1, '#3a74c8']
+      [0, '#c0c4c2'], [0.46, '#d8d8d0'], [0.52, '#bcd4f0'], [0.56, '#8ec2f6'], [0.62, '#56a4f2'], [0.75, '#2e92ea'], [1, '#2286e0']
     ]);
-    city.skyTextures = { night: nightTex, day: dayTex };
+    var duskTex = skyGradient([
+      [0, '#c8825a'], [0.22, '#a06a5e'], [0.38, '#705a72'], [0.55, '#44507a'], [0.74, '#283a66'], [1, '#1a2c58']
+    ]);
+    city.skyTextures = { night: nightTex, day: dayTex, dusk: duskTex };
     // The whole celestial set rides in one group that follows the camera.
     // Built world-anchored, the dome circled the MAINLAND's origin — and Isla
     // Verde's east coast reaches within 240 m of its rim, where the horizon
@@ -1972,6 +1999,12 @@ GAME.city = (function () {
     skyDay.renderOrder = -9;
     celestial.add(skyDay);
     city.skyDay = skyDay;
+    // the sunset dome, between the two: amber at the horizon into a violet
+    // zenith, faded in around golden hour and out again (applyTimeOfDay)
+    var skyDusk = new THREE.Mesh(new THREE.SphereGeometry(1385, 20, 14), new THREE.MeshBasicMaterial({ map: duskTex, side: THREE.BackSide, fog: false, depthWrite: false, transparent: true, opacity: 0 }));
+    skyDusk.renderOrder = -8.8;
+    celestial.add(skyDusk);
+    city.skyDusk = skyDusk;
     // overcast and fog (weather.js): a plain dome in the fog's colour drawn
     // over both, as thick as the weather is (main.js applyTimeOfDay). It is
     // the day dome's own sphere a little smaller: hidden in fine weather, a
@@ -1995,13 +2028,30 @@ GAME.city = (function () {
     var stars = new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xcfd8ff, size: 2.6, fog: false, sizeAttenuation: false }));
     celestial.add(stars);
     city.stars = stars;
+    // a second, brighter sprinkle — real skies have their bright stars and
+    // their faint dust, and one uniform size read as a mesh grid. Placed off
+    // an index hash, NOT the city's stream: the stream is the city's layout
+    // contract, and every roll spent here would move a ramp or a sign
+    // somewhere it has never been
+    var starPos2 = [];
+    for (i = 0; i < 110; i++) {
+      var hsh = (Math.imul(i + 1, 0x9e3779b1) ^ 0x85ebca6b) >>> 0;
+      var az2 = (hsh % 4096) / 4096 * Math.PI * 2;
+      var el2 = 0.14 + ((hsh >>> 12) % 4096) / 4096 * 1.3;
+      starPos2.push(1300 * Math.cos(el2) * Math.cos(az2), 1300 * Math.sin(el2), 1300 * Math.cos(el2) * Math.sin(az2));
+    }
+    var sg2 = new THREE.BufferGeometry();
+    sg2.setAttribute('position', new THREE.Float32BufferAttribute(starPos2, 3));
+    var starsBright = new THREE.Points(sg2, new THREE.PointsMaterial({ color: 0xe8eeff, size: 4.2, fog: false, sizeAttenuation: false }));
+    celestial.add(starsBright);
+    city.starsBright = starsBright;
 
     var moon = new THREE.Mesh(new THREE.CircleGeometry(60, 24), new THREE.MeshBasicMaterial({ color: 0xf0ead8, fog: false }));
     moon.position.set(1150, 520, -220);
     moon.lookAt(0, 0, 0);
     celestial.add(moon);
     city.moon = moon;
-    var halo = new THREE.Mesh(new THREE.CircleGeometry(130, 24), new THREE.MeshBasicMaterial({ map: radialGlowTexture('rgba(220,225,255,0.5)'), transparent: true, blending: THREE.AdditiveBlending, fog: false, depthWrite: false }));
+    var halo = new THREE.Mesh(new THREE.CircleGeometry(170, 24), new THREE.MeshBasicMaterial({ map: radialGlowTexture('rgba(210,220,255,0.4)'), transparent: true, blending: THREE.AdditiveBlending, fog: false, depthWrite: false }));
     halo.position.copy(moon.position).multiplyScalar(0.985);
     halo.lookAt(0, 0, 0);
     celestial.add(halo);
@@ -2038,10 +2088,24 @@ GAME.city = (function () {
     if (city.sky) city.sky.material.color.setScalar(U.clamp(0.32 + df * 1.1, 0.32, 1) * (1 - 0.45 * wet));
     if (city.skyDay) {
       city.skyDay.material.opacity = U.clamp((df - 0.6) / 0.32, 0, 1);
-      // the blue taken out of it, toward a flat overcast grey
-      city.skyDay.material.color.setRGB(1 - 0.42 * wet, 1 - 0.4 * wet, 1 - 0.5 * wet);
+      // the filmic curve in the composite drinks saturation out of blue
+      // (a pure blue primary comes back two-thirds strength and greyed), so
+      // the dome pays for it up front: blue boosted, red held back. Under
+      // weather the boost folds away toward the flat overcast grey.
+      city.skyDay.material.color.setRGB(
+        U.lerp(0.92, 0.85, wet), U.lerp(1.0, 0.87, wet), U.lerp(1.16, 0.9, wet));
+    }
+    // the sunset dome: its own bell around df .72 (main.js duskAmt, the same
+    // curve the lights ride), squeezed out by weather like everything else
+    if (city.skyDusk) {
+      var dd = (df - 0.72) / 0.16;
+      var duskI = Math.exp(-dd * dd) * clear;
+      city.skyDusk.material.opacity = duskI;
+      city.skyDusk.visible = duskI > 0.02;
+      city.skyDusk.material.color.setRGB(1 - 0.35 * wet, 1 - 0.3 * wet, 1 - 0.3 * wet);
     }
     if (city.stars) { city.stars.material.opacity = U.clamp(1 - df * 2.2, 0, 1) * clear; city.stars.material.transparent = true; city.stars.visible = df < 0.5 && wet < 0.9; }
+    if (city.starsBright) { city.starsBright.material.opacity = U.clamp(1 - df * 2.6, 0, 1) * clear; city.starsBright.material.transparent = true; city.starsBright.visible = city.stars.visible; }
     if (city.moon) city.moon.material.opacity = U.clamp(1 - df * 1.6, 0.05, 1) * U.clamp(clear, 0.05, 1), city.moon.material.transparent = true;
     if (city.moonHalo) city.moonHalo.material.opacity = U.clamp(0.5 - df * 0.8, 0, 0.5) * clear;
     // the sun takes the sky from the moon as the day comes up, and goes in
@@ -2050,9 +2114,12 @@ GAME.city = (function () {
     if (city.sun) {
       city.sun.material.opacity = sunI;
       city.sun.visible = sunI > 0.02;
+      // the low sun burns orange: full white-blue at noon, amber by dusk
+      var dd2 = (df - 0.72) / 0.16, warm = Math.exp(-dd2 * dd2);
+      city.sun.material.color.setRGB(1, U.lerp(0.95, 0.62, warm), U.lerp(0.82, 0.3, warm));
     }
     if (city.sunHalo) {
-      city.sunHalo.material.opacity = sunI * 0.9;
+      city.sunHalo.material.opacity = sunI * (0.9 + 0.35 * (function () { var d3 = (df - 0.72) / 0.16; return Math.exp(-d3 * d3); })());
       city.sunHalo.visible = sunI > 0.02;
     }
     // street lamps burn at night, fade out through dusk, and are off in daylight
@@ -2067,6 +2134,9 @@ GAME.city = (function () {
       city.lampHeads.material.color.setRGB(
         U.lerp(0.42, 1, lampOn), U.lerp(0.44, 0.784, lampOn), U.lerp(0.5, 0.54, lampOn));
     }
+    // the nearest street lamps put REAL light on the street at night (gfx.js
+    // carries them, city hands it the lamp posts)
+    if (GAME.gfx && GAME.gfx.setLampLight) GAME.gfx.setLampLight(lampOn);
     city.dayMode = df > 0.7;
   };
   city.setDaytime = function (day) { city.applyTimeOfDay(day ? 1 : 0); };
@@ -2189,18 +2259,22 @@ GAME.city = (function () {
         { kind: 'pole', parts: [[poleMesh, L], [headMesh, L]], x: ls.x, y: 0, z: ls.z, down: false, t: 0, m0: null };
     }
     scene.add(poleMesh); scene.add(headMesh);
-    // warm pools of light on the road
+    // warm pools of light on the road — the hot sodium core with the wide
+    // soft fall-off (lampPoolTexture), a size and a half bigger than the
+    // old single-stop disc, which read as a sticker on the asphalt
     var glowGeoB = new GeoBatch();
     for (var L2 = 0; L2 < lightSpots.length; L2++) {
       var ls2 = lightSpots[L2];
-      glowGeoB.addGroundQuad(ls2.x + Math.cos(ls2.rot) * 1.8, 0.07, ls2.z - Math.sin(ls2.rot) * 1.8, 11, 11, 0, 0xffffff);
+      glowGeoB.addGroundQuad(ls2.x + Math.cos(ls2.rot) * 1.9, 0.07, ls2.z - Math.sin(ls2.rot) * 1.9, 13.5, 13.5, 0, 0xffffff);
     }
-    var glowMesh = new THREE.Mesh(glowGeoB.build(), new THREE.MeshBasicMaterial({ map: radialGlowTexture('rgba(255,170,90,0.34)'), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+    var glowMesh = new THREE.Mesh(glowGeoB.build(), new THREE.MeshBasicMaterial({ map: lampPoolTexture(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
     glowMesh.matrixAutoUpdate = false;
     scene.add(glowMesh);
     // the lamps switch off in daylight (see applyTimeOfDay)
     city.lampHeads = headMesh;
     city.lampGlow = glowMesh;
+    // and where they all stand, for the real lights gfx.js sets down at night
+    city.lampSpots = lightSpots;
 
     // hydrants at intersection corners
     var hyd = [];

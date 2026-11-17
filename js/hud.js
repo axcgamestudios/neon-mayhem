@@ -35,6 +35,10 @@ GAME.hud = (function () {
     for (var i = 0; i < 6; i++) stars += '<span>★</span>';
     el['wanted-stars'].innerHTML = stars;
     paintKeyHelp();
+    // any real input wakes the hint bar from its whisper
+    ['keydown', 'pointerdown', 'touchstart', 'wheel', 'mousemove'].forEach(function (ev) {
+      window.addEventListener(ev, hintWake, { passive: true });
+    });
 
     dmgFlash = document.createElement('div');
     dmgFlash.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:22;background:radial-gradient(ellipse at center, transparent 55%, rgba(255,30,60,.45) 100%);opacity:0;transition:opacity .35s;';
@@ -851,6 +855,31 @@ GAME.hud = (function () {
 
   // ---------- controls hint bar ----------
   var ctlMode = '';
+  // The bar teaches, it is not a fixture: after ten seconds of play with no
+  // hand on anything it fades to a whisper (#controls-bar.dim), and the next
+  // key, click, touch or look brings it back. The HINT BAR setting still
+  // does the hiding — this only quiets what is left showing.
+  var hintIdleT = 0, hintDimmed = false;
+  function hintWake() {
+    hintIdleT = 0;
+    if (hintDimmed) { hintDimmed = false; el['controls-bar'].classList.remove('dim'); }
+  }
+  function stepHintIdle(dt) {
+    if (GAME.isTouch || !GAME.started || (GAME.prefs && GAME.prefs.hideCtl)) return;
+    // held controls are input too, not just the edges of them: keys held
+    // down, the mouse buttons (a pad's buttons land as keys, its triggers as
+    // the buttons they drive)
+    var inp = GAME.input;
+    if (inp) {
+      if (inp.lmb || inp.rmb) { hintWake(); return; }
+      for (var k in inp.keys) if (inp.keys[k]) { hintWake(); return; }
+    }
+    hintIdleT += dt;
+    if (!hintDimmed && hintIdleT > 10) {
+      hintDimmed = true;
+      el['controls-bar'].classList.add('dim');
+    }
+  }
   // the key help on the title and pause screens, in whatever the keys are
   // bound to now (controls.js)
   function K(code) { return GAME.controls ? GAME.controls.label(code) : code; }
@@ -1228,7 +1257,7 @@ GAME.hud = (function () {
   }
 
   function updateCashText() {
-    el.cash.textContent = '$' + Math.floor(shownCash);
+    el.cash.textContent = '$' + Math.floor(shownCash).toLocaleString();
   }
 
   function update(dt) {
@@ -1237,6 +1266,7 @@ GAME.hud = (function () {
     GAME.nav.update(dt);
     if (GAME.frame % 3 === 0) drawMinimap();
     if (GAME.frame % 10 === 0) { refreshControlsBar(); api.refreshFsBtn(); }
+    stepHintIdle(dt);
     // cash tick-up
     if (shownCash !== targetCash) {
       var diff = targetCash - shownCash;
@@ -1314,10 +1344,20 @@ GAME.hud = (function () {
 
   // The district name shares the top centre with a running mission's title
   // and objective, and was drawn straight over them: it goes underneath while
-  // one is up (and moves when one starts or ends under it).
+  // one is up (and moves when one starts or ends under it). Lola's pager
+  // gets the same courtesy on its side of the screen — under the mission
+  // bar, rather than behind it.
   function placeZone() {
     var mh = el['mission-hud'];
-    el['zone-popup'].style.top = mh.style.display === 'block' ? (mh.offsetTop + mh.offsetHeight + 6) + 'px' : '';
+    var on = mh.style.display !== 'none' && mh.style.display !== '';
+    el['zone-popup'].style.top = on ? (mh.offsetTop + mh.offsetHeight + 6) + 'px' : '';
+  }
+  function placePager() {
+    var mh = el['mission-hud'];
+    var top = GAME.isTouch ? 152 : 14;
+    if (!GAME.isTouch && mh.style.display !== 'none' && mh.style.display !== '')
+      top = Math.max(top, mh.offsetTop + mh.offsetHeight + 8);
+    el.pager.style.top = top + 'px';
   }
 
   // ---------- the pause screen: a menu down the left, a card beside it ----------
@@ -1539,7 +1579,7 @@ GAME.hud = (function () {
     var id = GAME.cast && GAME.cast.idFor(p.from);
     if (el['pager-face']) el['pager-face'].innerHTML = id ? GAME.cast.portrait(id) : '';
     // under the radar on a phone, where it moves up into this corner
-    el.pager.style.top = GAME.isTouch ? '152px' : '';
+    placePager();
     el.pager.classList.add('on');
     if (GAME.audio.pagerBeep) GAME.audio.pagerBeep();
   }
@@ -1699,7 +1739,22 @@ GAME.hud = (function () {
     enterHint: function (text) {
       var e = el['enter-hint'];
       if (!e) return;
-      if (text) e.textContent = text;
+      // "F — get in the Cadenza": the key rides in a keycap chip (.kcap in
+      // the HUD's face) and the words stay plain. Anything not of that
+      // shape falls back to plain text, and the line reads the same either
+      // way to anything asking it for textContent.
+      if (text && e.__hint !== text) {
+        e.__hint = text;
+        var cut = text.indexOf(' \u2014 ');
+        if (cut > 0 && cut <= 8) {
+          e.textContent = '';
+          var key = document.createElement('span');
+          key.className = 'kcap';
+          key.textContent = text.slice(0, cut);
+          e.appendChild(key);
+          e.appendChild(document.createTextNode(text.slice(cut)));
+        } else e.textContent = text;
+      }
       e.style.opacity = text ? 1 : 0;
     },
     get pagerText() { return paging && el['pager-text'] ? el['pager-text'].textContent : ''; },
@@ -1728,11 +1783,12 @@ GAME.hud = (function () {
       setTimeout(function () { dmgFlash.style.opacity = 0; }, 120);
     },
     missionStart: function (title, obj) {
-      el['mission-hud'].style.display = 'block';
+      el['mission-hud'].style.display = 'flex';
       el['mission-title'].textContent = title;
       el['mission-obj'].textContent = obj;
       el['mission-timer'].textContent = '';
       placeZone();
+      placePager();
     },
     missionObjective: function (obj) { el['mission-obj'].textContent = obj; },
     missionTimer: function (t, countdown) {
@@ -1741,9 +1797,11 @@ GAME.hud = (function () {
       var s = Math.max(0, t);
       var mm = Math.floor(s / 60), ss = Math.floor(s % 60);
       el['mission-timer'].textContent = mm + ':' + (ss < 10 ? '0' : '') + ss;
-      el['mission-timer'].style.color = countdown && s < 12 ? '#ff5d7a' : '#8dffd8';
+      // the last stretch turns the chip amber; the rest of the time it sits
+      // in the panel's own white
+      el['mission-timer'].style.color = countdown && s < 12 ? '#ffb547' : '#f2f4f8';
     },
-    missionEnd: function () { el['mission-hud'].style.display = 'none'; placeZone(); },
+    missionEnd: function () { el['mission-hud'].style.display = 'none'; placeZone(); placePager(); },
     // the corner fullscreen control — available everywhere (menus, portrait
     // overlay and in-game) and hidden only once you're actually fullscreen.
     refreshFsBtn: function () {
@@ -1778,6 +1836,10 @@ GAME.hud = (function () {
     },
     showBig: function (kind, sub) {
       var scr = el[kind + '-screen'];
+      // the readouts bow out: the outcome card owns the screen, and behind
+      // its blur the HUD would read as ghosts (body.big-up also stills the
+      // hint bar, which refreshControlsBar would otherwise bring back)
+      document.body.classList.add('big-up');
       scr.style.display = 'flex';
       scr.querySelector('.big-sub').textContent = sub || '';
       var hint = scr.querySelector('.big-hint');
@@ -1786,6 +1848,7 @@ GAME.hud = (function () {
     hideBig: function () {
       el['wasted-screen'].style.display = 'none';
       el['busted-screen'].style.display = 'none';
+      document.body.classList.remove('big-up');
     },
     fade: function (cb) {
       el['fade-layer'].style.opacity = 1;

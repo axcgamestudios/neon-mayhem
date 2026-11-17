@@ -6035,7 +6035,10 @@ function withTimeout(p, ms) {
       var uv = m.geometry.attributes.uv;
       for (var b = 0; b < uv.count / 36; b++) {
         var u0 = uv.getX(b * 36), u1 = uv.getX(b * 36 + 1);
-        if (Math.abs(u1 - u0 - 1) < 1e-6) continue;
+        // untextured two ways: the old full-tile boxes (u span 1) and the
+        // plain-wall boxes the stretch fix brought in (u span 0.01, every
+        // face pinned to the texture's windowless left column)
+        if (Math.abs(u1 - u0 - 1) < 1e-6 || Math.abs(u1 - u0) < 0.05) continue;
         textured++;
         seen[Math.round((u0 - Math.floor(u0)) * 10000)] = 1;
       }

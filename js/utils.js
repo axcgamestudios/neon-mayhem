@@ -255,9 +255,16 @@ GeoBatch.prototype.addBox = function (cx, cy, cz, sx, sy, sz, rotY, color, uvSca
     var n0 = BOX_NORMAL[f * 3], n1 = BOX_NORMAL[f * 3 + 1], n2 = BOX_NORMAL[f * 3 + 2];
     var nx = n0 * c + n2 * s, nz = -n0 * s + n2 * c;
     var fw = boxSize(BOX_SPAN[f * 2], sx, sy, sz), fh = boxSize(BOX_SPAN[f * 2 + 1], sx, sy, sz);
-    var uw = us ? fw / us : 1, vh = us ? fh / (us * 0.75) : 1;
+    var uw = us > 0 ? fw / us : 1, vh = us > 0 ? fh / (us * 0.75) : 1;
     var u0 = 0;
-    if (us && f >= 2 && f <= 3) { uw = 0.01; vh = 0.01; }
+    // a NEGATIVE uvScale means "no windows anywhere": every face samples
+    // the texture's plain left column, the same trick the roof uses. A
+    // plinth, a cap band or a rooftop box drawn with uvScale 0 wore the
+    // whole window grid stretched across whatever size it happened to be —
+    // eight floors of windows crushed into a three-metre band, the single
+    // loudest "wrong" on the street.
+    if (us < 0) { uw = 0.01; vh = 0.01; u0 = 0; }
+    else if (us && f >= 2 && f <= 3) { uw = 0.01; vh = 0.01; }
     else u0 = ushift;
     for (var i = 0; i < 6; i++) {
       var k = QUAD_TRIS[i], o = (f * 4 + k) * 3;

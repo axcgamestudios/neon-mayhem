@@ -37,6 +37,12 @@ GAME.resolveCircle = (function () {
 // when a flattop and a crew cut differ by six centimetres nobody can tell
 // what the barber is selling. Everything stands proud of the head so no face
 // is shared. 'buzz' returns null — bald is a choice now, not the rule.
+//
+// The caps hug the skull the detailed bodies build (humanGeo, below): a
+// cranium 0.24 wide whose crown is at +0.135 and the back of it at -0.13 —
+// so a cut reads as hair grown over a head rather than a hat set on a cube.
+// The plain body the low tier draws tops out within a centimetre of the same
+// crown, so one set of boxes sits right on both.
 function makeHair(style, colorHex) {
   if (style === 'buzz') return null;
   var g = new THREE.Group();
@@ -50,37 +56,52 @@ function makeHair(style, colorHex) {
     return m;
   }
   switch (style) {
-    case 'crew':       // short and tidy: low cap, trimmed back
-      box(0.3, 0.1, 0.3, 0, 0.19, 0);
-      box(0.3, 0.14, 0.06, 0, 0.08, -0.145);
+    case 'crew':       // short and tidy: a close cap, trimmed at the back
+      box(0.25, 0.08, 0.25, 0, 0.125, -0.005);
+      box(0.25, 0.14, 0.05, 0, 0.03, -0.135);
       break;
     case 'flat':       // old saves called the flattop 'flat'
     case 'flattop':    // a proper landing pad, square and tall
-      box(0.32, 0.3, 0.32, 0, 0.3, 0);
+      box(0.26, 0.24, 0.26, 0, 0.21, -0.01);
       break;
     case 'mohawk':     // a thin crest, nothing on the sides
-      box(0.09, 0.3, 0.34, 0, 0.26, 0);
+      box(0.08, 0.26, 0.32, 0, 0.2, -0.02);
       break;
     case 'pompadour':  // swept up and forward, heavy over the brow
-      box(0.3, 0.1, 0.3, 0, 0.19, 0);
-      box(0.28, 0.22, 0.16, 0, 0.28, 0.08);
+      box(0.25, 0.08, 0.25, 0, 0.125, 0);
+      box(0.24, 0.2, 0.16, 0, 0.185, 0.05);
       break;
     case 'mullet':     // business up top, party down the neck
-      box(0.3, 0.12, 0.3, 0, 0.2, 0);
-      box(0.3, 0.34, 0.08, 0, -0.02, -0.16);
+      box(0.25, 0.08, 0.25, 0, 0.125, -0.005);
+      box(0.24, 0.32, 0.07, 0, -0.02, -0.15);
       break;
     case 'afro':       // full volume all round
-      box(0.42, 0.3, 0.42, 0, 0.26, 0);
-      box(0.36, 0.16, 0.36, 0, 0.06, -0.06);
+      box(0.4, 0.32, 0.4, 0, 0.17, -0.01);
+      box(0.32, 0.16, 0.32, 0, -0.01, -0.03);
       break;
-    case 'ponytail':   // tight cap, tail out the back
-      box(0.3, 0.1, 0.3, 0, 0.19, 0);
-      box(0.09, 0.09, 0.2, 0, 0.16, -0.24);
-      box(0.08, 0.3, 0.08, 0, -0.02, -0.3);
+    case 'ponytail':   // a close cap, gathered at the crown, tail down the back
+      box(0.25, 0.08, 0.25, 0, 0.125, 0);
+      box(0.1, 0.1, 0.14, 0, 0.1, -0.175);
+      box(0.08, 0.3, 0.08, 0, -0.08, -0.2);
+      break;
+    case 'bob':        // a curtain cut: cap, sides down to the jaw, straight back
+      box(0.27, 0.09, 0.27, 0, 0.125, 0);
+      box(0.06, 0.3, 0.18, 0.12, -0.06, 0.02);
+      box(0.06, 0.3, 0.18, -0.12, -0.06, 0.02);
+      box(0.27, 0.32, 0.06, 0, -0.05, -0.145);
+      break;
+    case 'sidepart':   // combed over: a fringe on one brow, swept off the other
+      box(0.25, 0.09, 0.25, 0, 0.125, -0.005);
+      box(0.15, 0.1, 0.05, 0.05, 0.09, 0.115);
+      box(0.06, 0.14, 0.22, -0.115, 0.05, -0.01);
+      break;
+    case 'slick':      // pomade and a comb, tight to the skull
+      box(0.25, 0.07, 0.27, 0, 0.115, -0.015);
+      box(0.25, 0.11, 0.05, 0, 0.045, -0.14);
       break;
     default:           // unknown id: the crew cut is nobody's bad haircut
-      box(0.3, 0.1, 0.3, 0, 0.19, 0);
-      box(0.3, 0.14, 0.06, 0, 0.08, -0.145);
+      box(0.25, 0.08, 0.25, 0, 0.125, -0.005);
+      box(0.25, 0.14, 0.05, 0, 0.03, -0.135);
   }
   return g;
 }
@@ -90,16 +111,18 @@ var PED_SHIRTS = [0xf7a8c4, 0x9fe8d8, 0xf9d99a, 0x8fd0f0, 0xe86a8a, 0x8a6ae8, 0x
 var PED_PANTS = [0x3a4a68, 0x684a3a, 0x2a2a34, 0x8a4a5a, 0xd8d0c0];
 var PED_SKINS = [0xeac8a8, 0xc89878, 0x8a6848, 0x6a4c34, 0xf0d8c0];
 var PED_HAIR_COLORS = [0x1c1a18, 0x5a3c22, 0x2e2018, 0xd8b86a, 0xa8482a, 0x8a8a90];
-var PED_HAIR_STYLES = ['crew', 'crew', 'crew', 'flattop', 'flattop', 'pompadour', 'mullet', 'afro', 'ponytail', 'mohawk'];
+var PED_HAIR_STYLES = ['crew', 'crew', 'sidepart', 'flattop', 'flattop', 'pompadour', 'mullet', 'afro', 'ponytail', 'ponytail', 'bob', 'mohawk'];
 
 // ---------- the town's own bodies (gfx.js era) ----------
-// Every figure in Costa Rosa shares one head and one torso: a skull with its
-// nose, jaw, brow and ears, a chest with shoulders and a collar — merged
-// from plain boxes into one geometry, painted white so whatever material
-// wears it tints every part at once (the wardrobe swaps the skin, and the
-// nose follows it — that was the whole trick). The plain boxes stay for the
-// low tier, and every joint keeps its place, so the walk cycle needs to
-// know nothing about any of this.
+// Every figure in Costa Rosa shares one set of parts, merged from plain
+// boxes into a handful of geometries and painted white so whatever material
+// wears them tints every part at once (the wardrobe swaps the skin, and the
+// nose follows it — that was the whole trick). The detailed bodies are
+// PROPORTIONED like people — about 1.8 m, seven heads to the height, legs
+// 0.95 of it — with a rounded skull, a neck, hips in the trousers' cloth and
+// two-segment limbs jointed at elbow and knee. The plain boxes stay for the
+// low tier, and every joint keeps its name, so the walk cycle needs to know
+// nothing about any of this.
 var HUMAN_GEO = null;
 function humanGeo() {
   if (HUMAN_GEO) return HUMAN_GEO;
@@ -112,22 +135,121 @@ function humanGeo() {
     return g;
   }
   HUMAN_GEO = {
+    // the head: a wide cranium with a narrower face standing forward of it,
+    // a jaw and a chin stepped in under that — four boxes, so the silhouette
+    // reads rounded rather than a cube — with the features and the neck the
+    // old head never had. The neck is part of the head so a skin tint takes
+    // it with the face, and the head sits ON the collar instead of over it.
+    // Origin and face front are where they always were (shops.js places the
+    // player's hair at the head's origin; scenes.js dresses its close-ups
+    // around z 0.13).
     head: build(function (b) {
-      b.addBox(0, 0, 0, 0.26, 0.28, 0.26, 0, 0xffffff, 0);           // the skull
-      b.addBox(0, -0.015, 0.145, 0.055, 0.09, 0.05, 0, 0xffffff, 0);  // the nose
-      b.addBox(0, -0.1, 0.115, 0.155, 0.05, 0.06, 0, 0xffffff, 0);    // the jaw
-      b.addBox(0, 0.062, 0.135, 0.2, 0.038, 0.03, 0, 0xffffff, 0);    // the brow ridge
-      b.addBox(0.145, -0.01, 0, 0.035, 0.085, 0.09, 0, 0xffffff, 0);  // the ears
-      b.addBox(-0.145, -0.01, 0, 0.035, 0.085, 0.09, 0, 0xffffff, 0);
+      b.addBox(0, 0.05, -0.02, 0.24, 0.17, 0.22, 0, 0xffffff, 0);         // the cranium
+      b.addBox(0, -0.01, 0.035, 0.205, 0.19, 0.19, 0, 0xffffff, 0);        // the face
+      b.addBox(0, -0.085, 0.005, 0.17, 0.075, 0.175, 0, 0xffffff, 0);      // the jaw
+      b.addBox(0, -0.108, 0.035, 0.105, 0.05, 0.10, 0, 0xffffff, 0);       // the chin
+      b.addBox(0, -0.035, 0.135, 0.042, 0.075, 0.05, 0, 0xffffff, 0);      // the nose
+      b.addBox(0, 0.052, 0.117, 0.19, 0.032, 0.036, 0, 0xffffff, 0);       // the brow ridge
+      b.addBox(0.124, -0.02, -0.01, 0.032, 0.08, 0.075, 0, 0xffffff, 0);   // the ears
+      b.addBox(-0.124, -0.02, -0.01, 0.032, 0.08, 0.075, 0, 0xffffff, 0);
+      b.addBox(0, -0.19, 0, 0.125, 0.12, 0.125, 0, 0xffffff, 0);           // the neck
     }),
+    // the trunk: a chest wider than the waist under it, deltoid caps blended
+    // into the shoulders' line, a collar behind the neck. The pelvis is its
+    // own mesh in the trousers' cloth (buildPedMesh) — the belt rides it,
+    // and today's chest hem no longer hangs over a gap.
     torso: build(function (b) {
-      b.addBox(0, 0, 0, 0.46, 0.62, 0.26, 0, 0xffffff, 0);            // the chest
-      b.addBox(0.2, 0.25, 0, 0.17, 0.16, 0.25, 0, 0xffffff, 0);       // the shoulders
-      b.addBox(-0.2, 0.25, 0, 0.17, 0.16, 0.25, 0, 0xffffff, 0);
-      b.addBox(0, 0.27, 0.1, 0.23, 0.06, 0.09, 0, 0xffffff, 0);       // the collar
+      b.addBox(0, 0.22, 0, 0.42, 0.20, 0.27, 0, 0xffffff, 0);          // the chest
+      b.addBox(0, 0.02, 0, 0.36, 0.20, 0.25, 0, 0xffffff, 0);          // the waist
+      b.addBox(0.195, 0.24, 0, 0.09, 0.16, 0.27, 0, 0xffffff, 0);      // the shoulder caps
+      b.addBox(-0.195, 0.24, 0, 0.09, 0.16, 0.27, 0, 0xffffff, 0);
+      b.addBox(0, 0.325, 0.1, 0.18, 0.05, 0.09, 0, 0xffffff, 0);       // the collar
+    }),
+    // limb halves. Their geometry hangs below the mesh's own origin, so the
+    // mesh itself can be the joint: set at the elbow or knee, its rotation.x
+    // is the hinge (see jointFollow below).
+    arm: build(function (b) {          // the upper arm, sleeve and cuff
+      b.addBox(0, -0.15, 0, 0.11, 0.30, 0.11, 0, 0xffffff, 0);
+      b.addBox(0, -0.27, 0, 0.125, 0.055, 0.125, 0, 0xffffff, 0);      // the rolled cuff
+    }),
+    fore: build(function (b) {         // the forearm and hand, from the elbow
+      b.addBox(0, -0.12, 0, 0.095, 0.24, 0.095, 0, 0xffffff, 0);
+      b.addBox(0, -0.255, 0.008, 0.095, 0.055, 0.105, 0, 0xffffff, 0); // the palm
+      b.addBox(0, -0.30, 0.012, 0.085, 0.05, 0.095, 0, 0xffffff, 0);   // the fingers
+    }),
+    thigh: build(function (b) {
+      b.addBox(0, -0.22, 0, 0.145, 0.44, 0.15, 0, 0xffffff, 0);
+    }),
+    shin: build(function (b) {
+      b.addBox(0, -0.21, 0, 0.12, 0.42, 0.13, 0, 0xffffff, 0);
+    }),
+    shoe: build(function (b) {         // heel and toe, from the ankle down
+      b.addBox(0, -0.4675, -0.005, 0.14, 0.125, 0.17, 0, 0xffffff, 0);
+      b.addBox(0, -0.4875, 0.058, 0.13, 0.095, 0.19, 0, 0xffffff, 0);
+    }),
+    // the face: dark eyes with a white catchlight in each, and a mouth —
+    // one mesh, the colours packed as vertex colour, so the whole face is
+    // one draw call and never meets the wardrobe (it stays its own dark
+    // self whoever wears the head, like the belt stays dark over the shirt)
+    face: build(function (b) {
+      b.addBox(-0.063, 0.012, 0.125, 0.06, 0.036, 0.02, 0, 0x161a24, 0);
+      b.addBox(0.063, 0.012, 0.125, 0.06, 0.036, 0.02, 0, 0x161a24, 0);
+      b.addBox(-0.074, 0.02, 0.134, 0.014, 0.013, 0.006, 0, 0xe8f0ff, 0);
+      b.addBox(0.074, 0.02, 0.134, 0.014, 0.013, 0.006, 0, 0xe8f0ff, 0);
+      b.addBox(0, -0.075, 0.127, 0.084, 0.02, 0.012, 0, 0x32241f, 0);
     })
   };
   return HUMAN_GEO;
+}
+
+// ---------- the small joints ----------
+// A two-segment limb's lower half follows its upper half AT DRAW TIME: the
+// knee flexes as the thigh swings back and straightens as the leg reaches
+// forward to plant; the elbow curls further when the arm is behind the body
+// and locks out when it comes up, so a point, a hail or a punch is a
+// straight line. Nobody has to drive them. Every poser in the game —
+// animateWalk below, player.js's walk and aim, police.js's draw, the bike
+// and helm riders in vehicles.js, the cutscene figures — sets the big
+// joints only, and whatever they set, the small one answers it, at worst a
+// frame later.
+//
+// The rules, from the big joint's own angles (rx the swing, rz the splay):
+//   knee: a standing ease; flexion as the thigh trails behind; more when
+//         the thigh is raised past 0.45 (a jump's tuck, a saddle); and a
+//         riding bend whenever the legs are splayed round something;
+//   elbow: a resting bend (forearm a little forward, the way arms hang)
+//         that grows with the backswing and straightens on the raise.
+// The knee hinges backwards, the elbow forwards — opposite signs.
+var KNEE_EASE = 0.07, ELBOW_EASE = 0.30;
+function kneeBend(rx, rz) {
+  var b = KNEE_EASE;
+  if (rx > 0) b += rx * 1.15;
+  else if (rx < -0.45) b += (-rx - 0.45) * 1.1;
+  var s = rz < 0 ? -rz : rz;
+  if (s > 0.05) b += (s - 0.05) * 3.2;
+  return b > 1.35 ? 1.35 : b;
+}
+function elbowBend(rx) {
+  var b = ELBOW_EASE;
+  if (rx > 0) b += rx * 0.55;
+  else if (rx < -0.5) b -= (-rx - 0.5) * 1.25;
+  return b < 0 ? 0 : b > 2.3 ? 2.3 : -b;
+}
+// Hooked on the lower mesh. The renderer calls it just before drawing, after
+// the scene's matrices are settled, so the new angle is composed by hand for
+// this one draw — and anything riding the limb (a shoe on a shin) is carried
+// with it. Nothing is made on the way: a few numbers in, a rotation out.
+function jointFollow(mesh, curve) {
+  mesh.onBeforeRender = function () {
+    var p = this.parent;
+    this.rotation.x = curve(p.rotation.x, p.rotation.z);
+    this.updateMatrix();
+    this.matrixWorld.multiplyMatrices(p.matrixWorld, this.matrix);
+    for (var i = 0; i < this.children.length; i++) {
+      var c = this.children[i];
+      c.matrixWorld.multiplyMatrices(this.matrixWorld, c.matrix);
+    }
+  };
 }
 function detailPeds() {
   return !!(GAME.gfx && GAME.gfx.cfg && GAME.gfx.cfg.detailPeds);
@@ -158,42 +280,58 @@ function buildPedMesh(opts) {
     pants: sharedLambert(pants),
     skin: sharedLambert(skin)
   };
-  var torso = new THREE.Mesh(detailPeds() ? humanGeo().torso : sharedBoxGeo(0.46, 0.62, 0.26), mats.shirt);
+  var hi = detailPeds();
+  var torso = new THREE.Mesh(hi ? humanGeo().torso : sharedBoxGeo(0.46, 0.62, 0.26), mats.shirt);
+  // the trunk's origin stays at 1.12 — scenes.js bobs its figures' chests
+  // about exactly this height while they talk
   torso.position.y = 1.12;
   g.add(torso);
-  if (detailPeds()) {
+  var pelvis = null;
+  if (hi) {
+    // the hips, in the trousers' cloth, riding inside the chest's hem: the
+    // old body ran out of chest at its hem and the belt floated over the
+    // gap. The pelvis shares the pants material, so a tint in place (the
+    // wardrobe) takes it with the thighs; the mirror's material SWAP is
+    // forwarded to it below, with the shins.
+    pelvis = new THREE.Mesh(sharedBoxGeo(0.34, 0.22, 0.24), mats.pants);
+    pelvis.position.set(0, -0.11, 0);
+    torso.add(pelvis);
     // the belt stays dark whoever wears the chest: a child of the torso, so
     // it turns with the shirt it sits over and never meets the wardrobe
-    var belt = new THREE.Mesh(sharedBoxGeo(0.47, 0.07, 0.27), sharedLambert(0x191922));
-    belt.position.set(0, -0.18, 0);
+    var belt = new THREE.Mesh(sharedBoxGeo(0.37, 0.075, 0.285), sharedLambert(0x191922));
+    belt.position.set(0, -0.055, 0);
     torso.add(belt);
   }
-  var head = new THREE.Mesh(detailPeds() ? humanGeo().head : sharedBoxGeo(0.26, 0.28, 0.26), mats.skin);
+  var head = new THREE.Mesh(hi ? humanGeo().head : sharedBoxGeo(0.26, 0.28, 0.26), mats.skin);
+  // and the head's origin stays at 1.6 — shops.js stands the player's hair
+  // on it, and scenes.js dresses its close-ups round the same mark
   head.position.y = 1.6;
   g.add(head);
-  if (detailPeds()) {
-    // the eyes: dark, set proud of the face, far enough apart to read as a
-    // face from across the street. Marked skinPart so a skin swap takes
-    // them too if ever wanted; they stay their own dark selves.
-    var eyeMat = sharedLambert(0x11141c);
-    [0.062, -0.062].forEach(function (ex) {
-      var eye = new THREE.Mesh(sharedBoxGeo(0.055, 0.03, 0.02), eyeMat);
-      eye.position.set(ex, 0.012, 0.132);
-      head.add(eye);
-    });
+  if (hi) {
+    // the face: eyes with a catchlight, and a mouth, proud of the face and
+    // far enough apart to read as a face from across the street. One mesh,
+    // the wardrobe never touches it (humanGeo().face)
+    head.add(new THREE.Mesh(humanGeo().face, sharedVertexLambert()));
   }
   if (opts.army) {
-    // a soldier's helmet, not a patrolman's cap: domed, and down over the ears
-    var helm = new THREE.Mesh(sharedBoxGeo(0.34, 0.15, 0.34), mats.pants);
-    helm.position.y = 1.78;
+    // a soldier's helmet, not a patrolman's cap: domed, down over the ears,
+    // with a rim standing off the brow
+    var helm = new THREE.Mesh(sharedBoxGeo(0.33, 0.16, 0.33), mats.pants);
+    helm.position.y = 1.79;
     g.add(helm);
-    var dome = new THREE.Mesh(sharedBoxGeo(0.26, 0.06, 0.26), mats.pants);
-    dome.position.y = 1.88;
+    var dome = new THREE.Mesh(sharedBoxGeo(0.24, 0.07, 0.24), mats.pants);
+    dome.position.y = 1.895;
     g.add(dome);
+    var rim = new THREE.Mesh(sharedBoxGeo(0.35, 0.05, 0.10), mats.pants);
+    rim.position.set(0, 1.735, 0.115);
+    g.add(rim);
   } else if (opts.cop) {
-    var cap = new THREE.Mesh(sharedBoxGeo(0.3, 0.1, 0.3), mats.pants);
+    var cap = new THREE.Mesh(sharedBoxGeo(0.3, 0.11, 0.3), mats.pants);
     cap.position.y = 1.78;
     g.add(cap);
+    var brim = new THREE.Mesh(sharedBoxGeo(0.26, 0.03, 0.12), mats.pants);
+    brim.position.set(0, 1.745, 0.13);
+    g.add(brim);
   } else if (!opts.noHair) {
     // nobody in this town is bald unless they paid the barber for it
     // (the player's own hair is the wardrobe's business — see shops.js)
@@ -204,6 +342,7 @@ function buildPedMesh(opts) {
     g.userData.look.hair = hairStyle;
     g.userData.look.hairCol = hairCol;
   }
+  // the low tier's plain stick limbs, as they always were
   function limb(w, len, mat, x, y) {
     var pivot = new THREE.Group();
     pivot.position.set(x, y, 0);
@@ -213,36 +352,93 @@ function buildPedMesh(opts) {
     g.add(pivot);
     return pivot;
   }
-  var armL = limb(0.13, 0.58, mats.shirt, -0.3, 1.38);
-  var armR = limb(0.13, 0.58, mats.shirt, 0.3, 1.38);
-  var legL = limb(0.16, 0.8, mats.pants, -0.13, 0.82);
-  var legR = limb(0.16, 0.8, mats.pants, 0.13, 0.82);
-  if (detailPeds()) {
-    // hands on the arms (skin, so they follow the body that owns them) and
-    // shoes on the legs (dark leather, town issue). children[0] stays the
-    // limb mesh the wardrobe re-tints; these ride behind it.
-    [armL, armR].forEach(function (arm) {
-      var hand = new THREE.Mesh(sharedBoxGeo(0.09, 0.1, 0.09), mats.skin);
-      hand.userData.skinPart = true;
-      hand.position.set(0, -0.585, 0.01);
-      arm.add(hand);
-    });
-    var shoeMat = sharedLambert(0x17171f);
+  // the detailed bodies stand taller: legs 0.95 to the hip, arms from a
+  // shoulder line at 1.45, hips narrower than the chest (see humanGeo)
+  var ARM_X = hi ? 0.26 : 0.3, ARM_Y = hi ? 1.45 : 1.38;
+  var LEG_X = hi ? 0.11 : 0.13, LEG_Y = hi ? 0.95 : 0.82;
+  var armL, armR, legL, legR;
+  if (hi) {
+    // two segments, jointed: the upper half from the shoulder/hip pivot,
+    // the lower half its own mesh hung at the elbow/knee and bent by
+    // jointFollow. children[0] stays the limb mesh the wardrobe re-tints;
+    // the forearm is children[1] and skin, flagged skinPart, exactly where
+    // the hands always rode (shops.js dyes it with the head).
+    function arm(x) {
+      var pivot = new THREE.Group();
+      pivot.position.set(x, ARM_Y, 0);
+      pivot.add(new THREE.Mesh(humanGeo().arm, mats.shirt));
+      var fore = new THREE.Mesh(humanGeo().fore, mats.skin);
+      fore.userData.skinPart = true;
+      fore.position.set(0, -0.30, 0);
+      pivot.add(fore);
+      jointFollow(fore, elbowBend);
+      pivot.userData.elbow = fore;
+      g.add(pivot);
+      return pivot;
+    }
+    function leg(x) {
+      var pivot = new THREE.Group();
+      pivot.position.set(x, LEG_Y, 0);
+      pivot.add(new THREE.Mesh(humanGeo().thigh, mats.pants));
+      var shin = new THREE.Mesh(humanGeo().shin, mats.pants);
+      shin.position.set(0, -0.42, 0);
+      pivot.add(shin);
+      // the shoes ride the shin, so a bent knee carries the foot with it
+      shin.add(new THREE.Mesh(humanGeo().shoe, sharedLambert(0x17171f)));
+      jointFollow(shin, kneeBend);
+      pivot.userData.knee = shin;
+      g.add(pivot);
+      return pivot;
+    }
+    armL = arm(-ARM_X); armR = arm(ARM_X);
+    legL = leg(-LEG_X); legR = leg(LEG_X);
+    // The wardrobe's mirror (shops.js) dresses its mannequin by REPLACING a
+    // limb's material rather than tinting the shared one in place — which
+    // on a two-segment leg would leave the shin and the pelvis in the
+    // build's colours. Forward the swap: whatever the thigh is given, the
+    // rest of the trousers follow. (In-place tints need no help — the
+    // segments share the one material.)
     [legL, legR].forEach(function (leg) {
-      var shoe = new THREE.Mesh(sharedBoxGeo(0.17, 0.09, 0.25), shoeMat);
-      shoe.position.set(0, -0.785, 0.035);
-      leg.add(shoe);
+      var upper = leg.children[0], lower = leg.children[1];
+      var m = upper.material;
+      Object.defineProperty(upper, 'material', {
+        get: function () { return m; },
+        set: function (v) { m = v; lower.material = v; pelvis.material = v; }
+      });
     });
+  } else {
+    armL = limb(0.13, 0.58, mats.shirt, -ARM_X, ARM_Y);
+    armR = limb(0.13, 0.58, mats.shirt, ARM_X, ARM_Y);
+    legL = limb(0.16, 0.8, mats.pants, -LEG_X, LEG_Y);
+    legR = limb(0.16, 0.8, mats.pants, LEG_X, LEG_Y);
+  }
+  if (hi && opts.privateMats) {
+    // the player's own figure — the only one built on private materials, so
+    // the only one this is for. player.js owns the trunk's rotation every
+    // frame (it zeroes it), so the breath rides the chest's scale instead:
+    // a fraction of a percent, twice a second, alive at any distance.
+    // Composed by hand like the joint hooks, for the one draw that's about
+    // to happen.
+    torso.onBeforeRender = function () {
+      var b = 1 + Math.sin(GAME.time * 3.1) * 0.013;
+      this.scale.set(1 + (b - 1) * 0.6, b, 1 + (b - 1) * 0.6);
+      this.updateMatrix();
+      this.matrixWorld.multiplyMatrices(this.parent.matrixWorld, this.matrix);
+      for (var i = 0; i < this.children.length; i++) {
+        var c = this.children[i];
+        c.matrixWorld.multiplyMatrices(this.matrixWorld, c.matrix);
+      }
+    };
   }
   g.userData.joints = { armL: armL, armR: armR, legL: legL, legR: legR, head: head, torso: torso };
   if (opts.cop && !opts.army) {
     // an officer's service pistol: in the holster on his hip on the beat,
     // in his hand when he is after somebody (police.js draws it)
     var holster = new THREE.Mesh(sharedBoxGeo(0.08, 0.2, 0.14), sharedLambert(0x1a1a20));
-    holster.position.set(0.25, 0.86, -0.04);
+    holster.position.set(hi ? 0.20 : 0.25, hi ? 0.95 : 0.86, -0.03);
     g.add(holster);
     var pistol = new THREE.Mesh(sharedBoxGeo(0.07, 0.26, 0.13), sharedLambert(0x1a1a20));
-    pistol.position.set(0, -0.68, 0.03);
+    pistol.position.set(0, hi ? -0.66 : -0.68, 0.035);
     pistol.visible = false;
     armR.add(pistol);
     g.userData.pistol = pistol;
@@ -253,13 +449,13 @@ function buildPedMesh(opts) {
     var gunMat = sharedLambert(0x1c1e18);
     var rifle = new THREE.Group();
     var body = new THREE.Mesh(sharedBoxGeo(0.08, 0.86, 0.1), gunMat);
-    body.position.set(0, -0.64, 0.02);
+    body.position.set(0, hi ? -0.66 : -0.64, 0.03);
     rifle.add(body);
     var mag = new THREE.Mesh(sharedBoxGeo(0.06, 0.12, 0.16), gunMat);
-    mag.position.set(0, -0.5, -0.1);
+    mag.position.set(0, hi ? -0.52 : -0.5, -0.09);
     rifle.add(mag);
     var stock = new THREE.Mesh(sharedBoxGeo(0.07, 0.2, 0.14), mats.pants);
-    stock.position.set(0, -0.2, 0.0);
+    stock.position.set(0, hi ? -0.22 : -0.2, 0.01);
     rifle.add(stock);
     armR.add(rifle);
     g.userData.rifle = rifle;
@@ -488,9 +684,28 @@ GAME.peds = (function () {
   function animateWalk(ped, dt) {
     ped.walkPhase += ped.speed * dt * 2.2;
     var j = ped.mesh.userData.joints;
-    var s = Math.sin(ped.walkPhase) * Math.min(1, ped.speed / 2.2) * 0.7;
+    var k = Math.min(1, ped.speed / 2.2);
+    var s = Math.sin(ped.walkPhase) * k * 0.7;
     j.legL.rotation.x = s; j.legR.rotation.x = -s;
     if (!ped.aimPose) { j.armL.rotation.x = -s * 0.8; j.armR.rotation.x = s * 0.8; }
+    // the knees and elbows bend themselves (jointFollow, above): whatever
+    // these big joints are set to — here, or by police.js, or missions.js —
+    // the small ones answer at draw time, so the walk reads jointed.
+    var t = j.torso;
+    if (k < 0.06) {
+      // standing still: breathe — a slow roll in the chest, twice a second,
+      // nothing else moving. (The head is left alone either way.)
+      t.rotation.x = Math.sin(GAME.time * 3.1) * 0.012;
+      t.rotation.y = 0;
+    } else {
+      // moving: a hint of lean into it, the chest countering the swing of
+      // the legs beneath it, and the whole body riding two small bobs a
+      // stride (highest as a leg passes under, lowest at the split). pos.y
+      // is set fresh from the ground every frame, so the bob never drifts.
+      t.rotation.x = 0.035 * k;
+      t.rotation.y = Math.sin(ped.walkPhase) * 0.05 * k;
+      ped.pos.y += Math.cos(ped.walkPhase * 2) * 0.018 * k;
+    }
   }
 
   function update(dt) {

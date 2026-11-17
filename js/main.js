@@ -309,11 +309,19 @@
   }
 
   // night (df 0) and day (df 1) endpoint palettes; intermediate df gives dusk.
-  // Both ends stay neutral and physical — moonlight blue, daylight white with
-  // a warm sun — so the city reads real at any hour and the neon stays in the
-  // signs where it belongs
-  var TOD_NIGHT = { fog: 0x0d1420, near: 110, hemi: 0x2e3d5c, ground: 0x181a1e, hemiI: 0.5, dir: 0xb9c8e8, dirI: 0.4, amb: 0x18202e, ambI: 0.45, clear: 0x05070c };
-  var TOD_DAY = { fog: 0xc8d5e2, near: 150, hemi: 0xbcd4f0, ground: 0x9a8f78, hemiI: 0.9, dir: 0xfff3e0, dirI: 1.25, amb: 0x6f7884, ambI: 0.32, clear: 0x9fc0e8 };
+  // The night keeps a moonlit blue but the ground bounce carries the warmth
+  // of the street lamps, and the day is a proper blue sky with a warm sun —
+  // the neutral grey the town once wore read as dead on every screen it met.
+  // DUSK is its own palette (below): golden hour is a bell around df 0.72,
+  // not a midpoint, because a midpoint of night and day is exactly the muddy
+  // grey the sunset was before it had a colour of its own.
+  var TOD_NIGHT = { fog: 0x0e1526, near: 95, hemi: 0x34466a, ground: 0x26202a, hemiI: 0.55, dir: 0xb9c8e8, dirI: 0.42, amb: 0x1e2838, ambI: 0.5, clear: 0x060a14 };
+  var TOD_DAY = { fog: 0xc2d2e2, near: 150, hemi: 0xa8c8ee, ground: 0x9a8f78, hemiI: 1.0, dir: 0xfff1d8, dirI: 1.35, amb: 0x647a92, ambI: 0.32, clear: 0x86bcee };
+  // golden hour: an orange sun low over the sea, warm haze in the air, the
+  // sky's own dome doing the violet-to-amber band (city.js buildSky)
+  var TOD_DUSK = { fog: 0xd89868, near: 120, hemi: 0x8a7898, ground: 0x6a5040, hemiI: 0.62, dir: 0xff9448, dirI: 1.05, amb: 0x585064, ambI: 0.4, clear: 0x8a6a70 };
+  var DUSK_W = 0.16;   // the bell's half-width: full colour at df .72, gone by .5 and .95
+  function duskAmt(df) { var d = (df - 0.72) / DUSK_W; return Math.exp(-d * d); }
   var _cN = new THREE.Color(), _cD = new THREE.Color(), _cT = new THREE.Color(), _cR = new THREE.Color();
   var RAIN_NIGHT = 0x10151c, RAIN_DAY = 0x7c8394;   // what the fog turns to under rain
   var CLOUD_NIGHT = 0x14181f, CLOUD_DAY = 0x9aa2ae;  // ...under a grey lid of cloud
@@ -348,6 +356,19 @@
     L.dir.intensity = U.lerp(TOD_NIGHT.dirI, TOD_DAY.dirI, df);
     lerpHex(TOD_NIGHT.amb, TOD_DAY.amb, df, L.ambient.color);
     L.ambient.intensity = U.lerp(TOD_NIGHT.ambI, TOD_DAY.ambI, df);
+    // golden hour folds its own palette over whatever the endpoints gave:
+    // an orange sun, warm haze, a dusty violet sky light
+    var dusk = duskAmt(df);
+    if (dusk > 0.02) {
+      L.hemi.color.lerp(_cD.setHex(TOD_DUSK.hemi), dusk);
+      L.hemi.groundColor.lerp(_cD.setHex(TOD_DUSK.ground), dusk);
+      L.hemi.intensity = U.lerp(L.hemi.intensity, TOD_DUSK.hemiI, dusk);
+      L.dir.color.lerp(_cD.setHex(TOD_DUSK.dir), dusk);
+      L.dir.intensity = U.lerp(L.dir.intensity, TOD_DUSK.dirI, dusk);
+      L.ambient.color.lerp(_cD.setHex(TOD_DUSK.amb), dusk);
+      L.ambient.intensity = U.lerp(L.ambient.intensity, TOD_DUSK.ambI, dusk);
+      scene.fog.color.lerp(_cD.setHex(TOD_DUSK.fog), dusk * 0.6);
+    }
     if (wet > 0 || bolt > 0) {
       L.hemi.intensity = L.hemi.intensity * (1 - 0.3 * wet) + bolt * 1.4;
       L.dir.intensity *= 1 - 0.55 * wet;

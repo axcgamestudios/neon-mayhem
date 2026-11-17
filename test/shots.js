@@ -31,7 +31,7 @@ var server = http.createServer(function (req, res) {
   var errors = [];
   page.on('console', function (m) { if (m.type() === 'error') errors.push(m.text()); });
   page.on('pageerror', function (e) { errors.push(String(e)); });
-  await page.goto('http://127.0.0.1:' + port + '/');
+  await page.goto('http://127.0.0.1:' + port + '/?fullgfx');  // the real look: textures, PBR, post — the whole chain
   await page.waitForFunction(function () { return window.GAME && GAME.test; }, null, { timeout: 60000 });
 
   async function shot(name, fn, arg) {
@@ -73,6 +73,14 @@ var server = http.createServer(function (req, res) {
     GAME.perf.sample = function () {};
     GAME.gfx._noSoftwareTrim = true;
     GAME.gfx.applyQuality();
+    // a clear sky for every shot: the weather rolls on its own, and a bank
+    // of cloud in one run put a grey lid over the whole comparison
+    if (GAME.weather && GAME.weather.setMode) {
+      GAME.weather.setMode('clear', true);
+      GAME.weather.testSet && GAME.weather.testSet(0);
+      // settle the ramp instantly: a cloud bank at boot lingers for seconds
+      for (var _w = 0; _w < 12; _w++) GAME.weather.update(5);
+    }
     // and no cutscene owns the camera while the shots are being taken
     if (GAME.scenes) { GAME.scenes.enabled = false; if (GAME.scenes.skip) GAME.scenes.skip(); }
   });

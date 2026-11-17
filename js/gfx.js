@@ -673,12 +673,12 @@
     post.camFS = new THREE.Camera();
     post.quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), null);
     post.sceneFS.add(post.quad);
-    post.bright = fsMaterial(BRIGHT_FRAG, { tIn: { value: null }, uThresh: { value: 0.78 } });
+    post.bright = fsMaterial(BRIGHT_FRAG, { tIn: { value: null }, uThresh: { value: 0.71 } });
     post.blur = fsMaterial(BLUR_FRAG, { tIn: { value: null }, uDir: { value: new THREE.Vector2() } });
     post.comp = fsMaterial(COMP_FRAG, {
       tScene: { value: null }, tBloomA: { value: null }, tBloomB: { value: null },
       uRcp: { value: new THREE.Vector2(1 / w, 1 / h) },
-      uBloom: { value: 0.34 }, uExposure: { value: 1.05 },
+      uBloom: { value: 0.58 }, uExposure: { value: 1.08 },
       uVignette: { value: 0.26 }, uAA: { value: 1 }, uFilmic: { value: 0.85 },
       uSunUV: { value: new THREE.Vector2(0.5, 0.5) }, uSunI: { value: 0 },
       uSunCol: { value: new THREE.Color(1, 0.88, 0.7) }, uAspect: { value: w / h }
@@ -1061,8 +1061,55 @@
     return p;
   }
   var _needs = [];
+  // ---------- the street lamps' own light ----------
+  // The pools painted on the road (city.js) say where the light LANDS; these
+  // three PointLights are the light itself, set down on the lamp heads
+  // nearest the player after dark. Standard materials pick them up — faces,
+  // paint, clothes — so the night street is lit by its lamps instead of the
+  // moon alone. Three lights, moved not made, and off with the day.
+  var lampLights = null, lampLightOn = -1;
+  gfx.setLampLight = function (on) { lampLightOn = on; };
+  function tickLampLights(night) {
+    if (!scene) return;
+    if (!lampLights) {
+      lampLights = [];
+      for (var i = 0; i < 3; i++) {
+        var l = new THREE.PointLight(0xffb070, 0, 22, 2);
+        l.position.set(0, -50, 0);
+        scene.add(l);
+        lampLights.push(l);
+      }
+    }
+    var spots = GAME.city && GAME.city.lampSpots;
+    var amt = (lampLightOn >= 0 ? lampLightOn : night);
+    if (!spots || !spots.length || amt <= 0.03 || (gfx.flatTier && gfx.flatTier())) {
+      for (var j = 0; j < lampLights.length; j++) { lampLights[j].intensity = 0; }
+      return;
+    }
+    // the three nearest standing lamps to wherever the eye is
+    var f = GAME.focus ? GAME.focus() : { x: 0, z: 0 };
+    var best = [-1, -1, -1], bestD = [1e9, 1e9, 1e9];
+    for (var s = 0; s < spots.length; s++) {
+      var sp = spots[s];
+      if (sp.down) continue;
+      var dx = sp.x - f.x, dz = sp.z - f.z, d2 = dx * dx + dz * dz;
+      if (d2 > 1600) continue;   // 40 m: beyond this the pool decal is enough
+      if (d2 < bestD[0]) { bestD[2] = bestD[1]; best[2] = best[1]; bestD[1] = bestD[0]; best[1] = best[0]; bestD[0] = d2; best[0] = s; }
+      else if (d2 < bestD[1]) { bestD[2] = bestD[1]; best[2] = best[1]; bestD[1] = d2; best[1] = s; }
+      else if (d2 < bestD[2]) { bestD[2] = d2; best[2] = s; }
+    }
+    for (var k = 0; k < lampLights.length; k++) {
+      var l2 = lampLights[k], idx = best[k];
+      if (idx < 0) { l2.intensity = 0; continue; }
+      var lamp = spots[idx];
+      l2.position.set(lamp.x + Math.cos(lamp.rot) * 1.6, 5.5, lamp.z - Math.sin(lamp.rot) * 1.6);
+      l2.intensity = 1.35 * amt;
+    }
+  }
+
   function tickPools() {
     var night = U.clamp(1 - GAME.timeOfDay * 1.6, 0, 1);
+    tickLampLights(night);
     _needs.length = 0;
     if (night > 0.08 && scene) {
       var P = GAME.player;
@@ -1169,7 +1216,13 @@
   // the sky — and drops the passes it cannot afford. A real GPU never trips
   // this, and the test rig can switch it off.
   var softwareTrim = true;
+  // ?fullgfx on the URL: the whole show, whatever the machine says it is.
+  // A wrongly-flagged GPU (a remote desktop, a VM, an over-cautious driver
+  // string) used to flatten the town to vertex colours, and the owner had
+  // no way to say "I can see the textures from here".
+  var FORCE_FULL = /[?&]fullgfx/.test(location.search);
   function softwareGL() {
+    if (FORCE_FULL) return false;
     if (!renderer) return false;
     try {
       var gl = renderer.getContext();
